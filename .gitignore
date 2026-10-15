@@ -1,0 +1,11 @@
+bin/
+obj/
+publish/
+*.user
+.vs/
+*.log
+dist/
+*.zip
+
+qa-data/
+.dotnet-home/

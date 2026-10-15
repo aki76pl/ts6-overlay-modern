@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>TS6OverlayModern</AssemblyName>
+    <RootNamespace>TS6Overlay</RootNamespace>
+    <Version>3.6.0</Version>
+    <Authors>AKI76PL</Authors>
+    <Company>AKI76PL</Company>
+    <Copyright>Copyright (c) 2026 AKI76PL</Copyright>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Product>TS6 Overlay Modern</Product>
+    <Description>Nakładka TeamSpeak 6: kto mówi i kto wchodzi na kanał</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.2.1" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
+    <PackageReference Include="System.Speech" Version="10.0.12" />
+  </ItemGroup>
+
+</Project>
