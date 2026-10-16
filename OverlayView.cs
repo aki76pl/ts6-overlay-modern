@@ -197,8 +197,8 @@ public sealed class OverlayView : StackPanel
         var surface = new Border
         {
             Child = row,
-            Margin = new Thickness(-4, 3, -4, 3),
-            Padding = new Thickness(10, 7, 10, 7),
+            Margin = new Thickness(-4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0, -4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0),
+            Padding = new Thickness(10, 2, 10, 2),
             CornerRadius = new CornerRadius(Math.Min(_t.Radius, 10)),
             Background = m.Talking ? Theme.B(_t.TalkRow) : Brushes.Transparent,
         };

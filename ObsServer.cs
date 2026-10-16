@@ -80,6 +80,7 @@ public sealed class ObsServer : IDisposable
             theme = Theme.ColorFields.ToDictionary(f => f.Prop, f => CssColor(t.GetColor(f.Prop))),
             font = t.Font,
             radius = t.Radius,
+            userSpacing = Math.Clamp(cfg.UserSpacing, 0, 20),
             borderWidth = t.BorderWidth,
             square = t.SquareDots,
             shadow = t.TextShadow,
@@ -148,7 +149,7 @@ public sealed class ObsServer : IDisposable
   html,body{margin:0;background:transparent;overflow:hidden}
   #root{display:inline-block;padding:8px 10px;min-width:180px;transform-origin:0 0}
   .hdr{font-size:12px;font-weight:600;margin-bottom:4px}
-  .row{display:flex;align-items:center;gap:7px;font-size:14px;padding:1px 4px;margin:0 -4px}
+  .row{display:flex;align-items:center;gap:7px;font-size:14px;padding:2px 4px;margin:calc(var(--user-spacing, 2px) / 2) -4px}
   .dot{width:10px;height:10px;border-radius:50%;flex:none}
   .sq .dot{border-radius:0}
   .ic{font-size:11px}
@@ -168,6 +169,7 @@ async function tick() {
   try {
     const s = await (await fetch('/state', {cache: 'no-store'})).json();
     const t = s.theme || {};
+    root.style.setProperty('--user-spacing', Math.max(0, Math.min(20, s.userSpacing ?? 2)) + 'px');
     root.style.background = t.Panel; root.style.border = s.borderWidth + 'px solid ' + t.PanelBorder;
     root.style.borderRadius = s.radius + 'px'; root.style.fontFamily = "'" + s.font + "', 'Segoe UI', sans-serif";
     root.className = s.square ? 'sq' : '';

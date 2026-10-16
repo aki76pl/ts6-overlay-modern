@@ -1,6 +1,6 @@
 # TS6 Overlay Modern
 
-Wersja 3.6.0 — nowy interfejs ustawień i nakładki. Instrukcje kompilacji i publikacji: [README-MODERN.md](README-MODERN.md).
+Wersja 3.6.1 — nowy interfejs ustawień i nakładki. Instrukcje kompilacji i publikacji: [README-MODERN.md](README-MODERN.md).
 
 ---
 

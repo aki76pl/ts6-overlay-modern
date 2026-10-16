@@ -1,6 +1,10 @@
-# TS6 Overlay Modern 3.6.0
+# TS6 Overlay Modern 3.6.1
 
 Osobny projekt na podstawie TS6 Overlay autorstwa AKI76PL (MIT).
+
+## Zmiany 3.6.1
+
+Odstęp między użytkownikami jest regulowany suwakiem w Ustawienia → Wygląd (0–20 px, domyślnie 2 px). Zmniejszono też wewnętrzne odstępy wierszy. Ustawienie zapisuje się automatycznie i działa w nakładce, podglądzie oraz OBS.
 
 ## Nowy interfejs
 

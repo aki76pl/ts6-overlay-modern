@@ -144,6 +144,8 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(SliderRow("Rozmiar", 60, 200, () => _cfg.Scale * 100, v => _cfg.Scale = v / 100, v => $"{v:0}%"));
         p.Children.Add(SliderRow("Przezroczystość", 30, 100, () => _cfg.Opacity * 100, v => _cfg.Opacity = v / 100, v => $"{v:0}%"));
 
+        p.Children.Add(SliderRow("Odstęp między użytkownikami", 0, 20, () => Math.Clamp(_cfg.UserSpacing, 0, 20), v => _cfg.UserSpacing = (int)v, v => $"{v:0} px"));
+
         p.Children.Add(Header("Zawartość"));
         p.Children.Add(Check("Pokazuj wszystkich na kanale (odznacz = tylko mówiący i powiadomienia)", () => _cfg.ShowChannelList, v => _cfg.ShowChannelList = v));
         p.Children.Add(Check("Pokazuj wszystkie serwery, z którymi połączony jest TeamSpeak (nie tylko aktywny)", () => _cfg.ShowAllServers, v => _cfg.ShowAllServers = v));

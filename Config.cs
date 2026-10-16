@@ -33,6 +33,8 @@ public sealed class Ignored
 
 public sealed class Config
 {
+    /// <summary>Vertical gap between participant rows, in WPF units before overlay scaling.</summary>
+    public int UserSpacing { get; set; } = 2;
     public string ApiKey { get; set; } = "";
     public double Left { get; set; } = 20;
     public double Top { get; set; } = 200;

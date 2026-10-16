@@ -27,8 +27,27 @@ internal static class DesignCheck
             overlay.Measure(new Size(600, 1000));
             overlay.Arrange(new Rect(overlay.DesiredSize)); overlay.UpdateLayout();
             Save(overlay, Path.Combine(output, "overlay.png"));
+            int previousSpacing = app.Cfg.UserSpacing;
+            double previousHeight = 0;
+            foreach (int spacing in new[] { 0, 2, 20 })
+            {
+                app.Cfg.UserSpacing = spacing;
+                overlay = new OverlayView(app.Cfg, preview: true);
+                overlay.ApplyTheme(Theme.ByName("Aurora"));
+                overlay.ShowDemo();
+                overlay.Measure(new Size(600, 1000));
+                overlay.Arrange(new Rect(overlay.DesiredSize)); overlay.UpdateLayout();
+                if (overlay.ActualHeight <= previousHeight) throw new InvalidOperationException("Participant spacing did not increase overlay height.");
+                previousHeight = overlay.ActualHeight;
+                Save(overlay, Path.Combine(output, $"overlay-spacing-{spacing}.png"));
+            }
+            app.Cfg.UserSpacing = previousSpacing;
+            var oldConfig = System.Text.Json.JsonSerializer.Deserialize<Config>("{}");
+            if (oldConfig?.UserSpacing != 2) throw new InvalidOperationException("Missing spacing must default to 2.");
+            var roundTrip = System.Text.Json.JsonSerializer.Deserialize<Config>(System.Text.Json.JsonSerializer.Serialize(new Config { UserSpacing = 12 }));
+            if (roundTrip?.UserSpacing != 12) throw new InvalidOperationException("Spacing must survive configuration serialization.");
             settings.Close();
-            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections and Aurora overlay rendered.");
+            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections; overlay gaps 0, 2, 20; default and saved spacing verified.");
         }
         catch (Exception ex)
         {
