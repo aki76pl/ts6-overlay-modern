@@ -33,7 +33,7 @@ public static class GameDetector
     {
         string name = ForegroundProcess();
         if (name == "") return false;
-        if (name.Equals("TeamSpeak", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6Overlay", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("TeamSpeak", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6Overlay", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6OverlayModern", StringComparison.OrdinalIgnoreCase))
             return null;
         if (cfg.Games.Concat(cfg.Profiles.Select(p => p.Game)).Any(g => Normalize(g).Equals(name, StringComparison.OrdinalIgnoreCase))) return true;
         if (cfg.GameFullscreenAny && !NeverGame.Contains(name) && IsForegroundFullscreen()) return true;

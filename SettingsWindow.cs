@@ -73,7 +73,7 @@ public sealed partial class SettingsWindow : Window
 
         _timer.Tick += (_, _) => TimerTick();
         _timer.Start();
-        Closed += (_, _) => { _timer.Stop(); CancelCapture(); };
+        Closed += (_, _) => { _timer.Stop(); CancelCapture(); _app.EndLayoutEdit(); };
         PreviewKeyDown += OnCaptureKey;
     }
 
@@ -146,6 +146,14 @@ public sealed partial class SettingsWindow : Window
 
         p.Children.Add(SliderRow("Odstęp między użytkownikami", 0, 20, () => Math.Clamp(_cfg.UserSpacing, 0, 20), v => _cfg.UserSpacing = (int)v, v => $"{v:0} px"));
 
+        p.Children.Add(Header("Tryb minimalistyczny"));
+        p.Children.Add(Check("Sam nick i wskaźnik głosu — bez panelu", () => _cfg.MinimalMode, v => _cfg.MinimalMode = v));
+        p.Children.Add(Check("Pozioma lista w trybie minimalistycznym", () => _cfg.HorizontalLayout, v => _cfg.HorizontalLayout = v));
+        p.Children.Add(Header("Płynne znikanie nicków"));
+        p.Children.Add(Hint("Działa po odznaczeniu opcji pokazywania wszystkich na kanale. Ponowne rozpoczęcie mówienia od razu przywraca nick."));
+        p.Children.Add(Check("Pozostaw nick na chwilę i płynnie wygaszaj", () => _cfg.SpeakerFade, v => _cfg.SpeakerFade = v));
+        p.Children.Add(SliderRow("Czas po zakończeniu mówienia", 0, 10, () => _cfg.SpeakerHoldSeconds, v => _cfg.SpeakerHoldSeconds = (int)v, v => $"{v:0} s"));
+        p.Children.Add(SliderRow("Czas wygaszania", 100, 2000, () => _cfg.SpeakerFadeMilliseconds, v => _cfg.SpeakerFadeMilliseconds = (int)v, v => $"{v:0} ms"));
         p.Children.Add(Header("Zawartość"));
         p.Children.Add(Check("Pokazuj wszystkich na kanale (odznacz = tylko mówiący i powiadomienia)", () => _cfg.ShowChannelList, v => _cfg.ShowChannelList = v));
         p.Children.Add(Check("Pokazuj wszystkie serwery, z którymi połączony jest TeamSpeak (nie tylko aktywny)", () => _cfg.ShowAllServers, v => _cfg.ShowAllServers = v));
@@ -153,6 +161,10 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(SliderRow("Czas powiadomień wejścia/wyjścia", 2, 30, () => _cfg.EventSeconds, v => _cfg.EventSeconds = (int)v, v => $"{v:0} s"));
         p.Children.Add(SliderRow("Czas wiadomości i szturchnięć", 3, 60, () => _cfg.MessageSeconds, v => _cfg.MessageSeconds = (int)v, v => $"{v:0} s"));
 
+        p.Children.Add(Header("Edytor układu na żywo"));
+        p.Children.Add(Hint("Przeciągnij nakładkę lub uchwyt w prawym dolnym rogu, aby zmienić rozmiar. Podczas edycji widać przykładowych rozmówców; profil gry nie przełącza się automatycznie."));
+        p.Children.Add(Check("Przyciągaj do krawędzi ekranu", () => _cfg.SnapToEdges, v => _cfg.SnapToEdges = v));
+        p.Children.Add(Row(Btn("Edytuj układ na ekranie", () => _app.BeginLayoutEdit(_app.ActiveProfile), primary: true), Btn("Zakończ edycję", () => _app.EndLayoutEdit())));
         p.Children.Add(Header("Położenie"));
         p.Children.Add(Hint("Przytrzymaj Ctrl i przeciągnij nakładkę lewym przyciskiem myszy. Ctrl+Shift+O ukrywa/pokazuje nakładkę."));
         p.Children.Add(Row(Btn("Przywróć pozycję (lewy górny róg)", () =>
@@ -484,6 +496,11 @@ public sealed partial class SettingsWindow : Window
             var line2 = Row(Label(T("motyw"), dim: true), theme, Label(T("rozmiar"), dim: true), scale, scaleT, Label(T("krycie"), dim: true), op, opT);
             line2.Margin = new Thickness(20, 0, 0, 0);
             box.Children.Add(line2);
+            var minimal = new CheckBox { Content = T("Tryb minimalistyczny"), IsThreeState = true, IsChecked = prof.MinimalMode, Foreground = Fg, Margin = new Thickness(20, 6, 12, 6), ToolTip = T("Stan pośredni = ustawienie główne") };
+            var horizontal = new CheckBox { Content = T("Układ poziomy"), IsThreeState = true, IsChecked = prof.HorizontalLayout, Foreground = Fg, Margin = new Thickness(0, 6, 12, 6), ToolTip = T("Stan pośredni = ustawienie główne") };
+            minimal.Click += (_, _) => { prof.MinimalMode = minimal.IsChecked; Changed(); };
+            horizontal.Click += (_, _) => { prof.HorizontalLayout = horizontal.IsChecked; Changed(); };
+            box.Children.Add(Row(minimal, horizontal, Btn("Edytuj układ profilu", () => _app.BeginLayoutEdit(prof))));
             var card = Card_(box);
             card.Margin = new Thickness(0, 4, 0, 4);
             _profileList.Children.Add(card);
@@ -998,7 +1015,12 @@ public sealed partial class SettingsWindow : Window
                 RebuildPeople(); Changed();
             };
             string soundLabel = f.SoundPath == "" ? T("Dźwięk: wbudowany") : T("Dźwięk: {0}", System.IO.Path.GetFileName(f.SoundPath));
-            _favList.Children.Add(Row(Label("★ " + f.Nickname, 200), swatch,
+            var alias = Input(130);
+            alias.Text = f.Alias;
+            alias.MaxLength = 40;
+            alias.ToolTip = T("Własny pseudonim (pusty = nick z TeamSpeaka)");
+            alias.TextChanged += (_, _) => { f.Alias = alias.Text.Trim(); Changed(); };
+            _favList.Children.Add(Row(Label("★ " + f.Nickname, 150), alias, swatch,
                 Btn(soundLabel, () =>
                 {
                     var d = new Microsoft.Win32.OpenFileDialog { Filter = T("Dźwięki") + " (*.wav;*.mp3;*.wma;*.aiff;*.m4a)|*.wav;*.mp3;*.wma;*.aiff;*.m4a", Title = T("Dźwięk wejścia: {0}", f.Nickname) };
@@ -1426,7 +1448,7 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(Label(T("Wersja programu: {0}", Updater.Current)));
         p.Children.Add(Label(T("Autor: {0}", "AKI76PL") + "  ·  © 2026 AKI76PL  ·  " + T("licencja MIT"), dim: true));
         p.Children.Add(Check("Sprawdzaj aktualizacje (przy starcie, przy uruchomieniu TeamSpeaka i co 4 godziny; przypomnienie najwyżej raz na 7 dni)", () => _cfg.AutoUpdateCheck, v => _cfg.AutoUpdateCheck = v));
-        _updStatus = Hint("");
+        _updStatus = Hint(_app.PendingUpdate is { } available ? T("Dostępna wersja {0}. Kliknij „Sprawdź teraz”, aby zobaczyć zmiany i pobrać.", available.Version) : T("Sprawdź dostępność nowej wersji i przeczytaj pełną listę zmian przed pobraniem."));
         p.Children.Add(Row(Btn("Sprawdź teraz", CheckNow, primary: true),
             Btn("Strona wydań", () => Process.Start(new ProcessStartInfo(Updater.ReleasesPage) { UseShellExecute = true }))));
         p.Children.Add(_updStatus);

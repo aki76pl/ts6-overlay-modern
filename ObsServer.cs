@@ -48,20 +48,22 @@ public sealed class ObsServer : IDisposable
     }
 
     /// <summary>Wywoływane z wątku UI przy każdej zmianie.</summary>
-    public void Update(OverlayState s, Theme t, Config cfg)
+    public void Update(OverlayState s, Theme t, Config cfg, GameProfile? profile = null)
     {
         object Member(ClientInfo m, int myId) => new
         {
-            nick = m.Nickname,
+            nick = string.IsNullOrWhiteSpace(cfg.FavoriteFor(m.Uid)?.Alias) ? m.Nickname : cfg.FavoriteFor(m.Uid)!.Alias,
+            id = m.Id, uid = m.Uid, channelId = m.ChannelId,
             talking = m.Talking,
             whisper = m.Whisper,
             me = m.Id == myId,
             muted = m.InputMuted,
             deaf = m.OutputMuted, country = cfg.ShowFlags && m.Country.Length == 2 ? m.Country.ToLowerInvariant() : null, recording = m.Recording,
-            color = cfg.FavoriteFor(m.Uid)?.Color,
+            color = cfg.FavoriteFor(m.Uid) is { } favourite ? CssColor(favourite.Color) : null,
         };
         var servers = s.Servers.Select(v => new
         {
+            id = v.ConnectionId,
             server = v.Server,
             channel = v.Channel,
             members = v.Members.Select(m => Member(m, v.MyId)),
@@ -72,6 +74,12 @@ public sealed class ObsServer : IDisposable
         _stateJson = JsonSerializer.Serialize(new
         {
             connected = s.Servers.Count > 0,
+            minimal = profile?.MinimalMode ?? cfg.MinimalMode,
+            horizontal = profile?.HorizontalLayout ?? cfg.HorizontalLayout,
+            showChannelList = cfg.ShowChannelList,
+            speakerFade = cfg.SpeakerFade,
+            hold = Math.Clamp(cfg.SpeakerHoldSeconds, 0, 10) * 1000,
+            fade = Math.Clamp(cfg.SpeakerFadeMilliseconds, 100, 2000),
             servers,
             texts = new { disconnected = L.T("TeamSpeak: brak połączenia"), me = L.T(" (ty)") },
             notices,
@@ -160,6 +168,7 @@ public sealed class ObsServer : IDisposable
 <script>
 const q = new URLSearchParams(location.search);
 const onlyTalking = q.get('only') === 'talking';
+const speakers = new Map();
 const showNotices = q.get('notices') !== '0';
 const scale = parseFloat(q.get('scale') || '1');
 const root = document.getElementById('root');
@@ -169,35 +178,50 @@ async function tick() {
   try {
     const s = await (await fetch('/state', {cache: 'no-store'})).json();
     const t = s.theme || {};
+    const now = performance.now(), present = new Set();
+    const minimal = !!s.minimal;
+    const opacity = (m, server) => {
+      const key = JSON.stringify([server, m.id, m.uid, m.channelId]); present.add(key);
+      let old = speakers.get(key);
+      if (m.talking) { old = {talking:true, stopped:now}; speakers.set(key, old); }
+      else if (old?.talking) { old.talking = false; old.stopped = now; }
+      if (!onlyTalking && s.showChannelList || m.talking) return 1;
+      if (!s.speakerFade || !old) return 0;
+      return Math.max(0, Math.min(1, 1 - (now - old.stopped - s.hold) / s.fade));
+    };
+    root.style.padding = minimal ? '2px' : '8px 10px';
+    root.style.minWidth = minimal ? '0' : '180px';
+    root.style.display = minimal && s.horizontal ? 'inline-flex' : 'inline-block';
+    root.style.gap = '4px';
     root.style.setProperty('--user-spacing', Math.max(0, Math.min(20, s.userSpacing ?? 2)) + 'px');
-    root.style.background = t.Panel; root.style.border = s.borderWidth + 'px solid ' + t.PanelBorder;
+    root.style.background = minimal ? 'transparent' : t.Panel; root.style.border = (minimal ? 0 : s.borderWidth) + 'px solid ' + t.PanelBorder;
     root.style.borderRadius = s.radius + 'px'; root.style.fontFamily = "'" + s.font + "', 'Segoe UI', sans-serif";
     root.className = s.square ? 'sq' : '';
     const shadow = s.shadow ? 'text-shadow:0 1px 4px #000;' : '';
     let h = '';
-    const row = (m, small) => {
+    const row = (m, small, alpha) => {
         const dc = m.talking ? (m.whisper ? t.Whisper : t.Talk) : t.Idle;
         const glow = m.talking && s.glow ? 'box-shadow:0 0 8px ' + dc + ';' : '';
         const nc = m.color || (m.talking ? t.TextTalking : t.Text);
-        return '<div class="row" style="background:' + (m.talking ? t.TalkRow : 'transparent') + (small ? ';font-size:12px' : '') + '">'
+        return '<div class="row" style="opacity:' + alpha + ';background:' + (!minimal && m.talking ? t.TalkRow : 'transparent') + (small ? ';font-size:12px' : '') + '">'
           + '<span class="dot" style="background:' + dc + ';' + glow + '"></span>'
-          + (m.country ? '<img src="https://flagcdn.com/20x15/' + m.country + '.png" width="18" height="13" style="margin-right:2px">' : '')
-          + '<span style="color:' + nc + ';font-weight:' + (m.talking ? 700 : 400) + ';' + shadow + '">' + (m.color ? '★ ' : '') + esc(m.nick) + (m.me ? s.texts.me : '') + '</span>'
+          + (!minimal && m.country ? '<img src="https://flagcdn.com/20x15/' + m.country + '.png" width="18" height="13" style="margin-right:2px">' : '')
+          + '<span style="color:' + nc + ';font-weight:' + (m.talking ? 700 : 400) + ';' + shadow + '">' + (!minimal && m.color ? '★ ' : '') + esc(m.nick) + (m.me && !minimal ? s.texts.me : '') + '</span>'
           + (m.recording ? '<span class="ic" style="color:#f33">⏺</span>' : '')
-          + (m.muted ? '<span class="ic" style="color:' + t.Muted + '">🎙✕</span>' : '')
-          + (m.deaf ? '<span class="ic" style="color:' + t.Muted + '">🔇</span>' : '')
+          + (!minimal && m.muted ? '<span class="ic" style="color:' + t.Muted + '">🎙✕</span>' : '')
+          + (!minimal && m.deaf ? '<span class="ic" style="color:' + t.Muted + '">🔇</span>' : '')
           + '</div>';
     };
     if (!s.connected) h = '<div class="hdr" style="color:' + t.Header + '">' + esc(s.texts.disconnected) + '</div>';
     else {
       const multi = s.servers.length > 1;
       for (const v of s.servers) {
-        if (multi) h += '<div class="hdr" style="color:' + t.Header + ';opacity:.75;font-size:11px;margin-top:6px">🖧 ' + esc(v.server) + '</div>';
-        h += '<div class="hdr" style="color:' + t.Header + ';' + shadow + '">🔊 ' + esc(v.channel) + '</div>';
-        for (const m of v.members) if (!onlyTalking || m.talking) h += row(m, false);
+        if (multi && !minimal) h += '<div class="hdr" style="color:' + t.Header + ';opacity:.75;font-size:11px;margin-top:6px">🖧 ' + esc(v.server) + '</div>';
+        if (!minimal) h += '<div class="hdr" style="color:' + t.Header + ';' + shadow + '">🔊 ' + esc(v.channel) + '</div>';
+        for (const m of v.members) { const alpha = opacity(m, v.id); if (alpha > 0) h += row(m, false, alpha); }
         for (const w of v.watched) {
-          h += '<div class="hdr" style="color:' + t.Header + ';font-size:11px;margin-top:6px">👁 ' + esc(w.name) + ' (' + w.members.length + ')</div>';
-          for (const m of w.members) if (!onlyTalking || m.talking) h += row(m, true);
+          if (!minimal) h += '<div class="hdr" style="color:' + t.Header + ';font-size:11px;margin-top:6px">👁 ' + esc(w.name) + ' (' + w.members.length + ')</div>';
+          for (const m of w.members) { const alpha = opacity(m, v.id); if (alpha > 0) h += row(m, true, alpha); }
         }
       }
       if (showNotices) {
@@ -212,6 +236,7 @@ async function tick() {
         }
       }
     }
+    for (const key of speakers.keys()) if (!present.has(key)) speakers.delete(key);
     root.innerHTML = h;
   } catch (e) { root.innerHTML = ''; }
 }

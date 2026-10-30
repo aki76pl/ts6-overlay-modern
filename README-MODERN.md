@@ -1,3 +1,9 @@
+## Nowości 3.7.0
+
+Wygaszanie nicków, tryb minimalistyczny i edytor układu: **Ustawienia → Wygląd**. Profile: **Zachowanie → Profile gier**. Pseudonimy i kolory: **Osoby → Ulubieni**. Pobieranie aktualizacji: **Aktualizacje i kopia → Sprawdź teraz**.
+
+Pełny opis: [RELEASE-NOTES.md](RELEASE-NOTES.md).
+
 # TS6 Overlay Modern 3.6.1
 
 Osobny projekt na podstawie TS6 Overlay autorstwa AKI76PL (MIT).

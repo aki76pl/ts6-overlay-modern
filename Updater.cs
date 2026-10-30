@@ -16,11 +16,11 @@ public static class Updater
     public static Version Current =>
         Assembly.GetExecutingAssembly().GetName().Version is { } v ? new Version(v.Major, v.Minor, v.Build) : new Version(0, 0, 0);
 
-    public sealed record Release(Version Version, string Tag, string Notes, string DownloadUrl);
+    public sealed record Release(Version Version, string Tag, string Notes, string DownloadUrl, long Size = 0, string? Digest = null);
 
-    static HttpClient Http()
+    static HttpClient Http(bool download = false)
     {
-        var h = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        var h = new HttpClient { Timeout = download ? TimeSpan.FromMinutes(15) : TimeSpan.FromSeconds(30) };
         h.DefaultRequestHeaders.UserAgent.ParseAdd("TS6Overlay/" + Current);
         return h;
     }
@@ -33,12 +33,18 @@ public static class Updater
         string tag = json?["tag_name"]?.GetValue<string>() ?? "";
         if (!Version.TryParse(tag.TrimStart('v', 'V'), out var v)) return null;
         string? url = null;
+        long size = 0;
+        string? digest = null;
         if (json?["assets"] is JsonArray assets)
             foreach (var a in assets)
                 if (string.Equals(a?["name"]?.GetValue<string>(), AssetName, StringComparison.OrdinalIgnoreCase))
+                {
                     url = a?["browser_download_url"]?.GetValue<string>();
+                    size = a?["size"]?.GetValue<long>() ?? 0;
+                    digest = a?["digest"]?.GetValue<string>();
+                }
         if (url == null || v <= Current) return null;
-        return new Release(v, tag, json?["body"]?.GetValue<string>() ?? "", url);
+        return new Release(v, tag, json?["body"]?.GetValue<string>() ?? "", url, size, digest);
     }
 
     /// <summary>
@@ -52,7 +58,7 @@ public static class Updater
         string tmp = Path.Combine(dir, "TS6Overlay.new");
         string old = Path.Combine(dir, "TS6Overlay.old");
 
-        using (var http = Http())
+        using (var http = Http(download: true))
         using (var resp = await http.GetAsync(r.DownloadUrl, HttpCompletionOption.ResponseHeadersRead))
         {
             resp.EnsureSuccessStatusCode();
@@ -69,12 +75,32 @@ public static class Updater
                 if (total > 0) progress?.Report((int)(done * 100 / total));
             }
         }
-        if (new FileInfo(tmp).Length < 100_000) throw new InvalidDataException(L.T("Pobrany plik jest uszkodzony."));
+        if (new FileInfo(tmp).Length < 100_000 || (r.Size > 0 && new FileInfo(tmp).Length != r.Size))
+            throw new InvalidDataException(L.T("Pobrany plik jest uszkodzony."));
+        using (var check = File.OpenRead(tmp))
+        {
+            if (check.ReadByte() != 'M' || check.ReadByte() != 'Z') throw new InvalidDataException("Nieprawidłowy plik Windows EXE.");
+            if (r.Digest?.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                check.Position = 0;
+                var hash = Convert.ToHexString(await System.Security.Cryptography.SHA256.HashDataAsync(check));
+                if (!hash.Equals(r.Digest[7..], StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Suma kontrolna aktualizacji jest nieprawidłowa.");
+            }
+        }
 
         if (File.Exists(old)) File.Delete(old);
         File.Move(exe, old);
-        File.Move(tmp, exe);
-        Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true });
+        try
+        {
+            File.Move(tmp, exe);
+            _ = Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true }) ?? throw new IOException("Nie udało się uruchomić nowej wersji.");
+        }
+        catch
+        {
+            if (File.Exists(exe)) File.Delete(exe);
+            File.Move(old, exe);
+            throw;
+        }
     }
 
     /// <summary>Sprząta po poprzedniej aktualizacji.</summary>

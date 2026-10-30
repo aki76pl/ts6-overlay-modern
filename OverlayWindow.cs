@@ -1,6 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -17,6 +19,10 @@ public sealed class OverlayWindow : Window
     public OverlayView View { get; }
     /// <summary>Użytkownik przesunął nakładkę — App zapisuje pozycję w ustawieniach albo w profilu gry.</summary>
     public event Action<double, double>? Moved;
+    public event Action<double>? Scaled;
+    readonly Thumb _resize = new() { Width = 18, Height = 18, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Cursor = Cursors.SizeNWSE, Background = Brushes.Turquoise, Opacity = .8, Visibility = Visibility.Collapsed, ToolTip = "Przeciągnij, aby zmienić rozmiar" };
+    double _scale = 1;
+    double _resizeStart, _resizeDelta, _resizeExtent;
 
     public OverlayWindow(Config cfg)
     {
@@ -34,7 +40,18 @@ public sealed class OverlayWindow : Window
         Top = cfg.Top;
 
         View = new OverlayView(cfg);
-        Content = View;
+        var canvas = new Grid();
+        canvas.Children.Add(View);
+        canvas.Children.Add(_resize);
+        Content = canvas;
+        _resize.DragStarted += (_, _) => { _resizeStart = _scale; _resizeDelta = 0; _resizeExtent = Math.Max(100, ActualWidth); };
+        _resize.DragDelta += (_, e) =>
+        {
+            _resizeDelta += e.HorizontalChange + e.VerticalChange;
+            ApplyScale(Math.Clamp(_resizeStart * (1 + _resizeDelta / _resizeExtent), .6, 2), Opacity);
+            Scaled?.Invoke(_scale);
+        };
+        _resize.DragCompleted += (_, _) => { Snap(); Moved?.Invoke(Left, Top); };
         ApplyScale(cfg.Scale, cfg.Opacity);
         View.ApplyTheme(Theme.ByName(cfg.Theme));
 
@@ -47,7 +64,9 @@ public sealed class OverlayWindow : Window
                 e.Handled = true;
                 return;
             }
+            if (e.OriginalSource is DependencyObject source && IsResizeSource(source)) return;
             DragMove();
+            Snap();
             Moved?.Invoke(Left, Top);
         };
         SourceInitialized += (_, _) => ApplyClickThrough();
@@ -92,6 +111,7 @@ public sealed class OverlayWindow : Window
         set
         {
             _editMode = value;
+            _resize.Visibility = value ? Visibility.Visible : Visibility.Collapsed;
             View.SetHighlight(value, value ? L.T("Przeciągnij mnie myszką, potem „Zablokuj pozycję” w zasobniku") : null);
             ApplyClickThrough();
             if (!value) Moved?.Invoke(Left, Top);
@@ -100,8 +120,30 @@ public sealed class OverlayWindow : Window
 
     public void ApplyScale(double scale, double opacity)
     {
-        View.LayoutTransform = new ScaleTransform(scale, scale);
+        _scale = Math.Clamp(scale, .6, 2);
+        View.LayoutTransform = new ScaleTransform(_scale, _scale);
         Opacity = opacity;
+    }
+
+    bool IsResizeSource(DependencyObject source)
+    {
+        for (DependencyObject? d = source; d != null; d = VisualTreeHelper.GetParent(d))
+            if (d == _resize) return true;
+        return false;
+    }
+
+    void Snap()
+    {
+        if (!_cfg.SnapToEdges) return;
+        var handle = new WindowInteropHelper(this).Handle;
+        var area = System.Windows.Forms.Screen.FromHandle(handle).WorkingArea;
+        var transform = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformFromDevice ?? Matrix.Identity;
+        var a = transform.Transform(new Point(area.Left, area.Top));
+        var b = transform.Transform(new Point(area.Right, area.Bottom));
+        if (Math.Abs(Left - a.X) <= 16) Left = a.X;
+        else if (Math.Abs(Left + ActualWidth - b.X) <= 16) Left = b.X - ActualWidth;
+        if (Math.Abs(Top - a.Y) <= 16) Top = a.Y;
+        else if (Math.Abs(Top + ActualHeight - b.Y) <= 16) Top = b.Y - ActualHeight;
     }
 
     // ---------- click-through ----------

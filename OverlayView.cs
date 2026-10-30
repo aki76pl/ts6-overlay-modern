@@ -35,6 +35,13 @@ public sealed class OverlayView : StackPanel
     int _memberRows;
     readonly HashSet<(int, int)> _speaking = new();
     bool _animateSpeaker;
+    readonly SpeakerVisibility _speakerVisibility = new();
+    readonly DispatcherTimer _speakerTimer = new() { Interval = TimeSpan.FromMilliseconds(40) };
+    bool _lingering;
+    public GameProfile? LayoutProfile { get; set; }
+    public bool EditorDemo { get; set; }
+    bool Minimal => LayoutProfile?.MinimalMode ?? _cfg.MinimalMode;
+    bool Horizontal => Minimal && (LayoutProfile?.HorizontalLayout ?? _cfg.HorizontalLayout);
 
     public OverlayView(Config cfg, bool preview = false)
     {
@@ -58,7 +65,9 @@ public sealed class OverlayView : StackPanel
         TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
 
         _idleTimer.Tick += (_, _) => CheckIdle();
-        if (!preview) _idleTimer.Start();
+        Loaded += (_, _) => { _idleTimer.Start(); _speakerTimer.Start(); };
+        Unloaded += (_, _) => { _idleTimer.Stop(); _speakerTimer.Stop(); };
+        _speakerTimer.Tick += (_, _) => { if (_lingering) Render(_state); };
     }
 
     public Theme Theme => _t;
@@ -87,7 +96,7 @@ public sealed class OverlayView : StackPanel
     void ApplyBorder()
     {
         _panel.BorderBrush = _highlight ? Theme.B(_t.Accent) : Theme.B(_t.PanelBorder);
-        _panel.BorderThickness = new Thickness(_highlight ? 2 : _t.BorderWidth);
+        _panel.BorderThickness = new Thickness(_highlight ? 2 : Minimal ? 0 : _t.BorderWidth);
     }
 
     DropShadowEffect? TextShadow() => _t.TextShadow
@@ -99,6 +108,14 @@ public sealed class OverlayView : StackPanel
     public void Render(OverlayState s)
     {
         _state = s;
+        if (EditorDemo) s = DemoState(_cfg);
+        long now = Environment.TickCount64;
+        _speakerVisibility.Observe(s, now);
+        _lingering = false;
+        MinWidth = Minimal ? 0 : 190;
+        _panel.Padding = Minimal ? new Thickness(4) : new Thickness(16, 14, 16, 14);
+        _content.Orientation = Horizontal ? Orientation.Horizontal : Orientation.Vertical;
+        ApplyBorder();
         _content.Children.Clear();
         _memberRows = 0;
         bool anyTalking = false;
@@ -113,14 +130,18 @@ public sealed class OverlayView : StackPanel
             {
                 _animateSpeaker = m.Talking && !_speaking.Contains((srv.ConnectionId, m.Id));
                 anyTalking |= m.Talking;
-                if (!_cfg.ShowChannelList && !m.Talking) continue;
-                rows.Add(Row(m, m.Id == srv.MyId, small: false));
+                double opacity = _speakerVisibility.Opacity(srv.ConnectionId, m, _cfg, now);
+                if (opacity <= 0) continue;
+                _lingering |= !_cfg.ShowChannelList && !m.Talking;
+                var participant = Row(m, m.Id == srv.MyId, small: false);
+                if (!m.Talking) participant.Opacity = opacity;
+                rows.Add(participant);
             }
             // W trybie „tylko mówiący” serwer bez mówiących nie zajmuje miejsca.
             if (rows.Count == 0 && !_cfg.ShowChannelList && multi) continue;
             if (_content.Children.Count > 0 && multi) _content.Children.Add(new Border { Height = 6 });
-            if (multi) _content.Children.Add(Header("🖧 " + (srv.Server != "" ? srv.Server : T("serwer")), small: true, dim: true));
-            if (_hint == null || multi) _content.Children.Add(Header(("🔊 " + srv.Channel).TrimEnd()));
+            if (multi && !Minimal) _content.Children.Add(Header("🖧 " + (srv.Server != "" ? srv.Server : T("serwer")), small: true, dim: true));
+            if (!Minimal && (_hint == null || multi)) _content.Children.Add(Header(("🔊 " + srv.Channel).TrimEnd()));
             var recorders = srv.Members.Where(m => m.Recording && m.Id != srv.MyId).Select(m => m.Nickname).ToList();
             if (recorders.Count > 0 && _cfg.RecordingWarning) _content.Children.Add(RecordingBadge(recorders));
             foreach (var r in rows) _content.Children.Add(r);
@@ -128,10 +149,16 @@ public sealed class OverlayView : StackPanel
 
             foreach (var w in srv.Watched)
             {
-                var wrows = w.Members.Where(m => _cfg.ShowChannelList || m.Talking).ToList();
+                var wrows = w.Members.Where(m => _speakerVisibility.Opacity(srv.ConnectionId, m, _cfg, now) > 0).ToList();
                 anyTalking |= w.Members.Any(m => m.Talking);
-                _content.Children.Add(Header($"👁 {(w.Name == "" ? "…" : w.Name)} ({w.Members.Count})", small: true, top: 6));
-                foreach (var m in wrows) _content.Children.Add(Row(m, false, small: true));
+                if (!Minimal) _content.Children.Add(Header($"👁 {(w.Name == "" ? "…" : w.Name)} ({w.Members.Count})", small: true, top: 6));
+                foreach (var m in wrows)
+                {
+                    var participant = Row(m, false, small: true);
+                    participant.Opacity = _speakerVisibility.Opacity(srv.ConnectionId, m, _cfg, now);
+                    _lingering |= !_cfg.ShowChannelList && !m.Talking;
+                    _content.Children.Add(participant);
+                }
                 _memberRows += wrows.Count;
             }
         }
@@ -159,7 +186,7 @@ public sealed class OverlayView : StackPanel
         MaxWidth = 420,
     };
 
-    UIElement Row(ClientInfo m, bool isMe, bool small)
+    FrameworkElement Row(ClientInfo m, bool isMe, bool small)
     {
         var fav = _cfg.FavoriteFor(m.Uid);
         var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -171,17 +198,17 @@ public sealed class OverlayView : StackPanel
         dot.Fill = Theme.B(dotColor);
         if (m.Talking && _t.Glow) dot.Effect = new DropShadowEffect { Color = Theme.C(dotColor), BlurRadius = 9, ShadowDepth = 0 };
         row.Children.Add(dot);
-        if (_cfg.ShowFlags && m.Country.Length == 2) row.Children.Add(Flag(m.Country, small));
+        if (!Minimal && _cfg.ShowFlags && m.Country.Length == 2) row.Children.Add(Flag(m.Country, small));
         row.Children.Add(new TextBlock
         {
-            Text = (fav != null ? "★ " : "") + m.Nickname + (isMe ? T(" (ty)") : ""),
+            Text = (Minimal ? "" : fav != null ? "★ " : "") + (string.IsNullOrWhiteSpace(fav?.Alias) ? m.Nickname : fav!.Alias) + (isMe && !Minimal ? T(" (ty)") : ""),
             FontSize = small ? 12 : 14,
             FontWeight = m.Talking ? FontWeights.Bold : FontWeights.Normal,
             Foreground = fav != null ? SafeBrush(fav.Color, _t.TextTalking) : Theme.B(m.Talking ? _t.TextTalking : _t.Text),
             VerticalAlignment = VerticalAlignment.Center,
             Effect = TextShadow(),
         });
-        if (_cfg.WotShowInOverlay && App.WotFor(m) is { } wot)
+        if (!Minimal && _cfg.WotShowInOverlay && App.WotFor(m) is { } wot)
             row.Children.Add(new TextBlock
             {
                 Text = $"{wot.WinRate:0}% · {WotStats.Short(wot.Battles)}",
@@ -192,15 +219,15 @@ public sealed class OverlayView : StackPanel
         if (m.Recording)
             row.Children.Add(new TextBlock { Text = "⏺", Foreground = Brushes.Red, FontSize = small ? 11 : 13, Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = T("nagrywa") });
         // Ikony Segoe MDL2 Assets: wyciszony mikrofon / wyciszone głośniki.
-        if (m.InputMuted) row.Children.Add(MuteIcon(""));
-        if (m.OutputMuted) row.Children.Add(MuteIcon(""));
+        if (!Minimal && m.InputMuted) row.Children.Add(MuteIcon(""));
+        if (!Minimal && m.OutputMuted) row.Children.Add(MuteIcon(""));
         var surface = new Border
         {
             Child = row,
-            Margin = new Thickness(-4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0, -4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0),
-            Padding = new Thickness(10, 2, 10, 2),
+            Margin = Horizontal ? new Thickness(0, 0, Math.Max(4, _cfg.UserSpacing), 0) : new Thickness(-4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0, -4, Math.Clamp(_cfg.UserSpacing, 0, 20) / 2.0),
+            Padding = Minimal ? new Thickness(2) : new Thickness(10, 2, 10, 2),
             CornerRadius = new CornerRadius(Math.Min(_t.Radius, 10)),
-            Background = m.Talking ? Theme.B(_t.TalkRow) : Brushes.Transparent,
+            Background = !Minimal && m.Talking ? Theme.B(_t.TalkRow) : Brushes.Transparent,
         };
         if (_animateSpeaker && SystemParameters.ClientAreaAnimation)
             surface.BeginAnimation(OpacityProperty, new DoubleAnimation(.45, 1, TimeSpan.FromMilliseconds(180)));
@@ -418,7 +445,7 @@ public sealed class OverlayView : StackPanel
 
     void CheckIdle()
     {
-        bool active = !_cfg.AutoHide || _highlight || _voiceWhileMuted || _peeking
+        bool active = !_cfg.AutoHide || _highlight || _voiceWhileMuted || _peeking || _lingering
             || _notices.Children.Count > 0 || _state.Servers.Any(s => s.Members.Any(m => m.Talking));
         if (active)
         {
@@ -458,7 +485,7 @@ public sealed class OverlayView : StackPanel
         // Tylko mówiący, nikt nie mówi, brak powiadomień — nie zasłaniaj gry pustym panelem.
         bool empty = _memberRows == 0 && _notices.Children.Count == 0 && !_peeking;
         bool hideChrome = empty && !_highlight && !_cfg.ShowChannelList && !_preview;
-        _panel.Background = hideChrome ? Brushes.Transparent : Theme.B(_t.Panel);
+        _panel.Background = hideChrome || Minimal ? Brushes.Transparent : Theme.B(_t.Panel);
         _content.Visibility = hideChrome || _peeking ? Visibility.Collapsed : Visibility.Visible;
     }
 

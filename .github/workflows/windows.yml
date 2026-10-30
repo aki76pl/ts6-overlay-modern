@@ -16,8 +16,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Validate OBS rendering
+        run: node tests/obs.test.cjs
       - name: Publish Windows x64
         run: dotnet publish TS6Overlay.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o dist/win-x64
+      - name: Validate settings and overlay behaviour
+        shell: pwsh
+        run: |
+          $env:TS6_OVERLAY_DATA_DIR = Join-Path $env:RUNNER_TEMP 'ts6-design-check'
+          $process = Start-Process dist/win-x64/TS6OverlayModern.exe -ArgumentList '--design-check' -PassThru
+          if (!$process.WaitForExit(90000)) { $process.Kill(); throw 'Design check timed out' }
+          $result = Join-Path $env:TS6_OVERLAY_DATA_DIR 'design-check/result.txt'
+          if (!(Test-Path $result)) { throw 'Design check produced no result' }
+          Get-Content $result
+          if ($process.ExitCode -ne 0 -or !(Get-Content $result -Raw).StartsWith('PASS:')) { throw 'Design check failed' }
       - uses: actions/upload-artifact@v4
         with:
           name: TS6OverlayModern-win-x64
@@ -33,7 +45,7 @@ jobs:
           $tag = "v$version"
           gh release view $tag --json tagName 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create $tag dist/win-x64/TS6OverlayModern.exe --target $env:GITHUB_SHA --title "TS6 Overlay Modern $version" --generate-notes
+            gh release create $tag dist/win-x64/TS6OverlayModern.exe --target $env:GITHUB_SHA --title "TS6 Overlay Modern $version" --notes-file RELEASE-NOTES.md
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
           exit 0

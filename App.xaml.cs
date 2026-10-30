@@ -100,6 +100,11 @@ public partial class App : Application
 
         _win = new OverlayWindow(Cfg);
         _win.Moved += OnOverlayMoved;
+        _win.Scaled += scale =>
+        {
+            if (ActiveProfile is { } profile) profile.Scale = scale; else Cfg.Scale = scale;
+            Cfg.Save();
+        };
         _tsRunning = IsTeamSpeakRunning();
 
         Ts = new TsClient(Cfg);
@@ -249,7 +254,7 @@ public partial class App : Application
     {
         _state = Ts.Snapshot();
         _win.View.Render(_state);
-        Obs.Update(_state, _win.View.Theme, Cfg);
+        Obs.Update(_state, _win.View.Theme, Cfg, ActiveProfile);
         Discord.Update(_state);
         if (Phone.Running) _phoneJson = PhoneJson();
         UpdateMic();
@@ -312,7 +317,7 @@ public partial class App : Application
     {
         _win.View.AddNotice(n);
         Obs.AddNotice(n);
-        Obs.Update(_state, _win.View.Theme, Cfg);
+        Obs.Update(_state, _win.View.Theme, Cfg, ActiveProfile);
         Stats.OnNotice(n);
         if (n.Kind is NoticeKind.Message or NoticeKind.Poke && Links.Find(n.Text) is { Count: > 0 } found) LastLink = found[^1];
         if (Cfg.KeepChatArchive) ChatArchive.Append(n, _state.Active?.Server ?? "");
@@ -437,14 +442,14 @@ public partial class App : Application
         bool? game = Cfg.GameOnly || Cfg.Profiles.Count > 0 ? GameDetector.IsGameInForeground(Cfg) : false;
         if (Cfg.GameOnly && game.HasValue && game.Value != _gameActive) { _gameActive = game.Value; changed = true; }
 
-        if (Cfg.Profiles.Count > 0 && game.HasValue)
+        if (!_win.EditMode && Cfg.Profiles.Count > 0 && game.HasValue)
         {
             // null = okno neutralne (TS, nakładka) — profil zostaje bez zmian
             var fg = GameDetector.ForegroundProcess();
             var profile = Cfg.Profiles.FirstOrDefault(p => GameDetector.Normalize(p.Game).Equals(fg, StringComparison.OrdinalIgnoreCase));
             if (profile != ActiveProfile) ApplyProfile(profile);
         }
-        else if (Cfg.Profiles.Count == 0 && ActiveProfile != null) ApplyProfile(null);
+        else if (!_win.EditMode && Cfg.Profiles.Count == 0 && ActiveProfile != null) ApplyProfile(null);
 
         if (changed) UpdateVisibility();
     }
@@ -479,11 +484,12 @@ public partial class App : Application
     void ApplyProfile(GameProfile? p)
     {
         ActiveProfile = p;
+        _win.View.LayoutProfile = p;
         _win.Left = p?.Left ?? Cfg.Left;
         _win.Top = p?.Top ?? Cfg.Top;
         _win.ApplyScale(p?.Scale ?? Cfg.Scale, p?.Opacity ?? Cfg.Opacity);
         _win.View.ApplyTheme(_previewTheme ?? EffectiveTheme());
-        Obs.Update(_state, _win.View.Theme, Cfg);
+        Obs.Update(_state, _win.View.Theme, Cfg, ActiveProfile);
     }
 
     Theme EffectiveTheme() => Theme.ByName(ActiveProfile is { Theme: { Length: > 0 } t } ? t : Cfg.Theme);
@@ -504,7 +510,7 @@ public partial class App : Application
 
     void UpdateVisibility()
     {
-        bool show = _peekForce || (_tsRunning && !_userHidden && (!Cfg.GameOnly || _gameActive || _win.EditMode));
+        bool show = _win.EditMode || _peekForce || (_tsRunning && !_userHidden && (!Cfg.GameOnly || _gameActive || _win.EditMode));
         if (show && !_win.IsVisible) _win.Show();
         else if (!show && _win.IsVisible) _win.Hide();
     }
@@ -527,6 +533,7 @@ public partial class App : Application
         if (!BindCapture) Binds.Register();
         // Profil mógł zostać zmieniony lub usunięty w ustawieniach.
         if (ActiveProfile != null && !Cfg.Profiles.Contains(ActiveProfile)) ActiveProfile = null;
+        _win.View.LayoutProfile = ActiveProfile;
         _win.ApplyScale(ActiveProfile?.Scale ?? Cfg.Scale, ActiveProfile?.Opacity ?? Cfg.Opacity);
         _win.View.ApplyTheme(_previewTheme ?? EffectiveTheme());
         _win.View.ResetIdle();
@@ -539,6 +546,25 @@ public partial class App : Application
         WatchTick();
         UpdateVisibility();
         Refresh();
+    }
+
+    public void BeginLayoutEdit(GameProfile? profile)
+    {
+        ApplyProfile(profile);
+        _win.View.EditorDemo = true;
+        _win.EditMode = true;
+        _win.View.Render(_state);
+        UpdateVisibility();
+    }
+
+    public void EndLayoutEdit()
+    {
+        if (!_win.EditMode && !_win.View.EditorDemo) return;
+        _win.View.EditorDemo = false;
+        _win.EditMode = false;
+        _win.View.Render(_state);
+        WatchTick();
+        UpdateVisibility();
     }
 
     public bool ObsRunning { get; private set; }
@@ -556,7 +582,7 @@ public partial class App : Application
     {
         _previewTheme = t;
         _win.View.ApplyTheme(t ?? EffectiveTheme());
-        Obs.Update(_state, _win.View.Theme, Cfg);
+        Obs.Update(_state, _win.View.Theme, Cfg, ActiveProfile);
     }
 
     /// <summary>Przenosi nakładkę w zapisane miejsce (ustawienia główne albo aktywny profil).</summary>
@@ -621,23 +647,24 @@ public partial class App : Application
         }
     }
 
-    public async Task AskAndUpdate(Updater.Release r)
+    bool _updateDialogOpen;
+    public Task AskAndUpdate(Updater.Release r)
     {
-        var notes = r.Notes.Length > 600 ? r.Notes[..600] + "…" : r.Notes;
-        var ans = MessageBox.Show(T("Dostępna wersja {0} (masz {1}).\n\n{2}\n\nZaktualizować teraz?", r.Version, Updater.Current, notes),
-            T("TS6 Overlay — aktualizacja"), MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-        if (ans == MessageBoxResult.No) { Cfg.SkippedVersion = r.Tag; Cfg.Save(); return; }
-        if (ans != MessageBoxResult.Yes) return;
+        if (_updateDialogOpen) return Task.CompletedTask;
+        _updateDialogOpen = true;
         try
         {
-            SetStatus(T("Pobieranie aktualizacji…"));
-            await Updater.InstallAsync(r);
-            Quit(beforeShutdown: () => _single?.ReleaseMutex());
+            var dialog = new UpdateWindow(r, async progress =>
+            {
+                EndLayoutEdit();
+                Cfg.Save();
+                await Updater.InstallAsync(r, progress);
+                Quit(beforeShutdown: () => _single?.ReleaseMutex());
+            });
+            dialog.ShowDialog();
         }
-        catch (Exception ex)
-        {
-            MessageBox.Show(T("Aktualizacja nie powiodła się: {0}", ex.Message), "TS6 Overlay");
-        }
+        finally { _updateDialogOpen = false; }
+        return Task.CompletedTask;
     }
 
     // ---------- Aslain's WoT Modpack ----------
@@ -729,7 +756,7 @@ public partial class App : Application
         menu.Items.Add(Item((_userHidden ? T("Pokaż nakładkę") : T("Ukryj nakładkę")) + "  (Ctrl+Shift+O)", ToggleVisible));
         menu.Items.Add(Item(_win.EditMode ? T("Zablokuj pozycję") : T("Przesuń nakładkę"), () =>
         {
-            _win.EditMode = !_win.EditMode;
+            if (_win.EditMode) EndLayoutEdit(); else BeginLayoutEdit(ActiveProfile);
             UpdateVisibility();
         }));
 

@@ -7,6 +7,7 @@ public sealed class Favorite
 {
     public string Uid { get; set; } = "";
     public string Nickname { get; set; } = "";
+    public string Alias { get; set; } = "";
     public string Color { get; set; } = "#FFFFD700";
     /// <summary>Własny dźwięk wejścia (wav/mp3); pusty = wbudowany sygnał ulubionego.</summary>
     public string SoundPath { get; set; } = "";
@@ -23,6 +24,8 @@ public sealed class GameProfile
     public double Opacity { get; set; } = 0.9;
     /// <summary>Pusty = motyw główny.</summary>
     public string Theme { get; set; } = "";
+    public bool? MinimalMode { get; set; }
+    public bool? HorizontalLayout { get; set; }
 }
 
 public sealed class Ignored
@@ -35,6 +38,12 @@ public sealed class Config
 {
     /// <summary>Vertical gap between participant rows, in WPF units before overlay scaling.</summary>
     public int UserSpacing { get; set; } = 2;
+    public bool SpeakerFade { get; set; } = true;
+    public int SpeakerHoldSeconds { get; set; } = 2;
+    public int SpeakerFadeMilliseconds { get; set; } = 500;
+    public bool MinimalMode { get; set; }
+    public bool HorizontalLayout { get; set; }
+    public bool SnapToEdges { get; set; } = true;
     public string ApiKey { get; set; } = "";
     public double Left { get; set; } = 20;
     public double Top { get; set; } = 200;
