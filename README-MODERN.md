@@ -1,3 +1,9 @@
+## Poprawka 3.7.3 — aktualizacje Windows
+
+Aktualizator czeka na zakończenie procesu, dopiero potem podmienia EXE. Naprawia to błąd dostępu do `TS6Overlay.old`. Przy chwilowej blokadzie pliku ponawia próbę, a po błędzie uruchomienia przywraca poprzednią wersję.
+
+Jeżeli starsza wersja wyświetla ten błąd: zamknij ją poleceniem **Zamknij** w zasobniku, pobierz `TS6OverlayModern-3.7.3.exe` i uruchom nowy plik. Następnie w **Aktualizacje i kopia** wybierz **Zainstaluj na tym komputerze**, aby zaktualizować również zainstalowaną kopię i autostart. Ustawienia pozostają zachowane.
+
 ## Nowości 3.7.2
 
 - **Wygląd → Wskaźnik aktywności głosu**: pulsujący punkt, animowane słupki lub punkt statyczny.

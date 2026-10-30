@@ -1524,7 +1524,7 @@ public sealed partial class SettingsWindow : Window
             Btn("Zainstaluj na tym komputerze", () =>
             {
                 if (Installer.IsInstalledCopy) { Info("Ta kopia jest już zainstalowana."); return; }
-                if (Confirm("Zainstalować TS6 Overlay w %LOCALAPPDATA%\\Programs\\TS6Overlay (skrót w menu Start, autostart)?\nProgram uruchomi się ponownie z nowego miejsca."))
+                if (Confirm("Zainstalować TS6 Overlay w %LOCALAPPDATA%\\Programs\\TS6OverlayModern (skrót w menu Start, autostart)?\nProgram uruchomi się ponownie z nowego miejsca."))
                     _app.InstallNow();
             }),
             Btn("Odinstaluj…", () =>

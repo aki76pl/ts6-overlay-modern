@@ -56,6 +56,18 @@ public partial class App : Application
     {
         base.OnStartup(e);
         var args = e.Args;
+        if (args.Length == 2 && args[0] == "--apply-update")
+        {
+            // Separate process: no mutex, tray, TeamSpeak or user configuration writes.
+            try { UpdateHandover.Run(args[1]); Shutdown(0); }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Nie udało się dokończyć aktualizacji. Ustawienia pozostają zachowane.\n\n" + ex.Message,
+                    "TS6 Overlay — aktualizacja", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+            }
+            return;
+        }
         Cfg = Config.Load();
         L.Set(Cfg.Language);
 
@@ -197,7 +209,7 @@ public partial class App : Application
         if (Installer.IsInstalled) return false;
         var r = MessageBox.Show(
             T("Zainstalować TS6 Overlay na tym komputerze?\n\n" +
-              "• program trafi do %LOCALAPPDATA%\\Programs\\TS6Overlay,\n" +
+              "• program trafi do %LOCALAPPDATA%\\Programs\\TS6OverlayModern,\n" +
               "• pojawi się skrót w menu Start,\n" +
               "• nakładka będzie startować z Windows (i pokazywać się razem z TeamSpeakiem),\n" +
               "• odinstalujesz go w Ustawieniach Windows → Aplikacje.\n\n" +

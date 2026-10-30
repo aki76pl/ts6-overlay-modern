@@ -35,7 +35,7 @@ internal sealed class UpdateWindow : Window
             status.Text = T("Pobieranie aktualizacji…");
             try
             {
-                await install(new Progress<int>(value => { progress.IsIndeterminate = false; progress.Value = value; status.Text = T("Pobieranie: {0}%", value); }));
+                await install(new Progress<int>(value => { progress.IsIndeterminate = false; progress.Value = value; status.Text = value >= 100 ? T("Pobieranie zakończone. Przygotowuję ponowne uruchomienie…") : T("Pobieranie: {0}%", value); }));
                 busy = false; Close();
             }
             catch (Exception ex)

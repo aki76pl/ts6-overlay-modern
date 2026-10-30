@@ -47,16 +47,13 @@ public static class Updater
         return new Release(v, tag, json?["body"]?.GetValue<string>() ?? "", url, size, digest);
     }
 
-    /// <summary>
-    /// Pobiera nowy plik, podmienia uruchomiony exe (Windows pozwala zmienić nazwę działającego pliku)
-    /// i uruchamia nową wersję. Wywołujący powinien zaraz potem zamknąć aplikację.
-    /// </summary>
+    /// <summary>Pobiera i sprawdza EXE, a następnie uruchamia pomocnika czekającego na zamknięcie aplikacji.</summary>
     public static async Task InstallAsync(Release r, IProgress<int>? progress = null)
     {
         string exe = Environment.ProcessPath ?? throw new InvalidOperationException("Brak ścieżki programu.");
-        string dir = Path.GetDirectoryName(exe)!;
-        string tmp = Path.Combine(dir, "TS6Overlay.new");
-        string old = Path.Combine(dir, "TS6Overlay.old");
+        string directory = Path.Combine(UpdateHandover.Root, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string tmp = Path.Combine(directory, "payload.exe");
 
         using (var http = Http(download: true))
         using (var resp = await http.GetAsync(r.DownloadUrl, HttpCompletionOption.ResponseHeadersRead))
@@ -88,33 +85,9 @@ public static class Updater
             }
         }
 
-        if (File.Exists(old)) File.Delete(old);
-        File.Move(exe, old);
-        try
-        {
-            File.Move(tmp, exe);
-            _ = Process.Start(new ProcessStartInfo(exe, "--updated") { UseShellExecute = true }) ?? throw new IOException("Nie udało się uruchomić nowej wersji.");
-        }
-        catch
-        {
-            if (File.Exists(exe)) File.Delete(exe);
-            File.Move(old, exe);
-            throw;
-        }
+        UpdateHandover.Start(directory, exe);
     }
 
     /// <summary>Sprząta po poprzedniej aktualizacji.</summary>
-    public static void Cleanup()
-    {
-        try
-        {
-            string dir = Path.GetDirectoryName(Environment.ProcessPath ?? "") ?? "";
-            foreach (var f in new[] { "TS6Overlay.old", "TS6Overlay.new" })
-            {
-                var p = Path.Combine(dir, f);
-                if (File.Exists(p)) File.Delete(p);
-            }
-        }
-        catch { }
-    }
+    public static void Cleanup() => UpdateHandover.Cleanup();
 }
