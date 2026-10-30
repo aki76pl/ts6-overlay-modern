@@ -212,7 +212,7 @@ public sealed record Theme
         return copy;
     }
 
-    bool IsValid()
+    internal bool IsValid()
     {
         try
         {

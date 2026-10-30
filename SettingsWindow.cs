@@ -146,6 +146,18 @@ public sealed partial class SettingsWindow : Window
 
         p.Children.Add(SliderRow("Odstęp między użytkownikami", 0, 20, () => Math.Clamp(_cfg.UserSpacing, 0, 20), v => _cfg.UserSpacing = (int)v, v => $"{v:0} px"));
 
+        p.Children.Add(Header("Pakiet wyglądu"));
+        p.Children.Add(Hint("Udostępnij motyw, położenie, skalę, układ i animacje z ustawień głównych w jednym pliku .ts6look."));
+        p.Children.Add(Row(Btn("Eksportuj wygląd…", ExportAppearance), Btn("Importuj wygląd…", ImportAppearance)));
+        p.Children.Add(Header("Wskaźnik aktywności głosu"));
+        var voiceStyle = new ComboBox { MinWidth = 240 };
+        voiceStyle.Items.Add(T("Pulsujący punkt"));
+        voiceStyle.Items.Add(T("Animowane słupki"));
+        voiceStyle.Items.Add(T("Statyczny punkt — bez animacji"));
+        voiceStyle.SelectedIndex = _cfg.VoiceIndicatorStyle switch { "Bars" => 1, "Static" => 2, _ => 0 };
+        voiceStyle.SelectionChanged += (_, _) => { _cfg.VoiceIndicatorStyle = voiceStyle.SelectedIndex switch { 1 => "Bars", 2 => "Static", _ => "Pulse" }; Changed(); };
+        p.Children.Add(Row(voiceStyle));
+        p.Children.Add(Hint("Animacja działa podczas mówienia, również w trybie minimalistycznym i OBS. Wskazuje aktywność, a nie głośność mikrofonu. Uwzględnia systemowe wyłączenie animacji."));
         p.Children.Add(Header("Tryb minimalistyczny"));
         p.Children.Add(Check("Sam nick i wskaźnik głosu — bez panelu", () => _cfg.MinimalMode, v => _cfg.MinimalMode = v));
         p.Children.Add(Check("Pozioma lista w trybie minimalistycznym", () => _cfg.HorizontalLayout, v => _cfg.HorizontalLayout = v));
@@ -157,6 +169,7 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(Header("Zawartość"));
         p.Children.Add(Check("Pokazuj wszystkich na kanale (odznacz = tylko mówiący i powiadomienia)", () => _cfg.ShowChannelList, v => _cfg.ShowChannelList = v));
         p.Children.Add(Check("Pokazuj wszystkie serwery, z którymi połączony jest TeamSpeak (nie tylko aktywny)", () => _cfg.ShowAllServers, v => _cfg.ShowAllServers = v));
+        p.Children.Add(Check("Pokazuj awatary — zdjęcia lub inicjały", () => _cfg.ShowAvatars, v => _cfg.ShowAvatars = v));
         p.Children.Add(Check("Pokazuj flagi krajów przy nickach", () => _cfg.ShowFlags, v => _cfg.ShowFlags = v));
         p.Children.Add(SliderRow("Czas powiadomień wejścia/wyjścia", 2, 30, () => _cfg.EventSeconds, v => _cfg.EventSeconds = (int)v, v => $"{v:0} s"));
         p.Children.Add(SliderRow("Czas wiadomości i szturchnięć", 3, 60, () => _cfg.MessageSeconds, v => _cfg.MessageSeconds = (int)v, v => $"{v:0} s"));
@@ -198,6 +211,28 @@ public sealed partial class SettingsWindow : Window
             Info(T("Zaimportowano motyw „{0}”.", t.Name));
         }
         catch (Exception ex) { Info(T("Nie udało się wczytać motywu: {0}", ex.Message)); }
+    }
+
+    void ExportAppearance()
+    {
+        var file = new Microsoft.Win32.SaveFileDialog { Filter = "Wygląd TS6 Overlay|*.ts6look", FileName = "TS6Overlay-wyglad.ts6look" };
+        if (file.ShowDialog(this) != true) return;
+        try { AppearancePreset.Capture(_cfg).Export(file.FileName); Info("Zapisano pakiet wyglądu."); }
+        catch (Exception ex) { Info(ex.Message); }
+    }
+
+    void ImportAppearance()
+    {
+        var file = new Microsoft.Win32.OpenFileDialog { Filter = "Wygląd TS6 Overlay|*.ts6look" };
+        if (file.ShowDialog(this) != true) return;
+        try
+        {
+            var preset = AppearancePreset.Read(file.FileName);
+            if (!Confirm("Zastosować motyw, układ, położenie i animacje z tego pliku?")) return;
+            _app.EndLayoutEdit(); preset.Apply(_cfg); Changed(); _app.ResetOverlayPosition();
+            _app.ReopenAppearanceSettings();
+        }
+        catch (Exception ex) { Info(ex.Message); }
     }
 
     void ExportTheme(Theme t)
@@ -453,6 +488,7 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(Hint("Wykresy i wyszukiwarkę znajdziesz w oknie statystyk (ikona w zasobniku → Statystyki…). Dane zostają tylko na tym komputerze."));
 
         p.Children.Add(Header("Diagnostyka"));
+        p.Children.Add(Row(Btn("Sprawdź połączenie", () => new ConnectionDiagnosticsWindow(_app.Ts) { Owner = this }.ShowDialog(), primary: true)));
         p.Children.Add(Check("Zapisuj surowe zdarzenia TeamSpeak (events.log)", () => _cfg.LogRawEvents, v => _cfg.LogRawEvents = v));
         p.Children.Add(Row(Btn("Otwórz folder ustawień", () => Process.Start(new ProcessStartInfo("explorer.exe", Config.Dir)))));
         return Scroll(p);
@@ -1021,6 +1057,14 @@ public sealed partial class SettingsWindow : Window
             alias.ToolTip = T("Własny pseudonim (pusty = nick z TeamSpeaka)");
             alias.TextChanged += (_, _) => { f.Alias = alias.Text.Trim(); Changed(); };
             _favList.Children.Add(Row(Label("★ " + f.Nickname, 150), alias, swatch,
+                Btn("Awatar…", () =>
+                {
+                    var file = new Microsoft.Win32.OpenFileDialog { Filter = "Obrazy|*.png;*.jpg;*.jpeg;*.bmp;*.gif", Title = T("Awatar: {0}", f.Nickname) };
+                    if (file.ShowDialog(this) != true) return;
+                    try { f.AvatarPng = AvatarStore.Import(file.FileName); RebuildPeople(); Changed(); }
+                    catch (Exception ex) { Info(T("Nie udało się wczytać awatara: {0}", ex.Message)); }
+                }),
+                Btn("Inicjały", () => { f.AvatarPng = ""; RebuildPeople(); Changed(); }),
                 Btn(soundLabel, () =>
                 {
                     var d = new Microsoft.Win32.OpenFileDialog { Filter = T("Dźwięki") + " (*.wav;*.mp3;*.wma;*.aiff;*.m4a)|*.wav;*.mp3;*.wma;*.aiff;*.m4a", Title = T("Dźwięk wejścia: {0}", f.Nickname) };

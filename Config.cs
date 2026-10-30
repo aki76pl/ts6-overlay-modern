@@ -8,6 +8,7 @@ public sealed class Favorite
     public string Uid { get; set; } = "";
     public string Nickname { get; set; } = "";
     public string Alias { get; set; } = "";
+    public string AvatarPng { get; set; } = "";
     public string Color { get; set; } = "#FFFFD700";
     /// <summary>Własny dźwięk wejścia (wav/mp3); pusty = wbudowany sygnał ulubionego.</summary>
     public string SoundPath { get; set; } = "";
@@ -38,6 +39,8 @@ public sealed class Config
 {
     /// <summary>Vertical gap between participant rows, in WPF units before overlay scaling.</summary>
     public int UserSpacing { get; set; } = 2;
+    public string VoiceIndicatorStyle { get; set; } = "Pulse";
+    public bool ShowAvatars { get; set; } = true;
     public bool SpeakerFade { get; set; } = true;
     public int SpeakerHoldSeconds { get; set; } = 2;
     public int SpeakerFadeMilliseconds { get; set; } = 500;

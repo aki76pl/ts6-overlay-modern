@@ -148,6 +148,14 @@ public sealed class TsClient
     readonly object _lock = new();
     readonly HashSet<string> _unknownTypes = new();
     int _currentConnectionId;
+    bool _apiConnected, _authorized;
+    long _receivedEvents;
+    DateTimeOffset? _lastEvent, _lastTalk;
+    public sealed record DiagnosticState(bool ApiConnected, bool Authorized, int Servers, long Events, DateTimeOffset? LastEvent, DateTimeOffset? LastTalk);
+    public DiagnosticState Diagnostics()
+    {
+        lock (_lock) return new(_apiConnected, _authorized, _conns.Values.Count(c => c.Connected), _receivedEvents, _lastEvent, _lastTalk);
+    }
 
     public event Action? StateChanged;
     public event Action<Notice>? Notice;
@@ -275,6 +283,7 @@ public sealed class TsClient
                 using var ws = new ClientWebSocket();
                 Status?.Invoke(T("Łączenie z TeamSpeak…"));
                 await ws.ConnectAsync(new Uri(Url), stop);
+                lock (_lock) { _apiConnected = true; _authorized = false; _receivedEvents = 0; _lastEvent = _lastTalk = null; }
                 await SendAsync(ws, new JsonObject
                 {
                     ["type"] = "auth",
@@ -295,7 +304,7 @@ public sealed class TsClient
             {
                 Status?.Invoke(T("Brak połączenia z TeamSpeak — ponawiam… ({0})", ex.Message));
             }
-            lock (_lock) { _conns.Clear(); }
+            lock (_lock) { _conns.Clear(); _apiConnected = false; _authorized = false; }
             StateChanged?.Invoke();
             try { await Task.Delay(3000, stop); } catch { return; }
         }
@@ -335,6 +344,7 @@ public sealed class TsClient
 
         lock (_lock)
         {
+            if (type != "auth") { _receivedEvents++; _lastEvent = DateTimeOffset.UtcNow; }
             switch (type)
             {
                 case "auth": OnAuth(p); break;
@@ -354,6 +364,7 @@ public sealed class TsClient
                     break;
                 case "clientMoved": OnClientMoved(p); break;
                 case "talkStatusChanged":
+                    _lastTalk = DateTimeOffset.UtcNow;
                     {
                         var c = Conn(Int(p["connectionId"]));
                         var cl = c.Get(Int(p["clientId"]));
@@ -421,6 +432,7 @@ public sealed class TsClient
     void OnAuth(JsonNode p)
     {
         var key = Str(p["apiKey"]);
+        _authorized = key != "" || p["connections"] is JsonArray || Int(p["currentConnectionId"]) != 0;
         if (key != "" && key != _cfg.ApiKey) { _cfg.ApiKey = key; _cfg.Save(); }
         _currentConnectionId = Int(p["currentConnectionId"]);
         _conns.Clear();

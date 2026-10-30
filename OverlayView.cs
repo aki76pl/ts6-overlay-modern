@@ -191,13 +191,14 @@ public sealed class OverlayView : StackPanel
         var fav = _cfg.FavoriteFor(m.Uid);
         var row = new StackPanel { Orientation = Orientation.Horizontal };
         string dotColor = m.Talking ? (m.Whisper ? _t.Whisper : _t.Talk) : _t.Idle;
-        Shape dot = _t.SquareDots ? new Rectangle() : new Ellipse();
-        dot.Width = dot.Height = small ? 8 : 10;
-        dot.Margin = new Thickness(small ? 4 : 0, 0, 7, 0);
-        dot.VerticalAlignment = VerticalAlignment.Center;
-        dot.Fill = Theme.B(dotColor);
-        if (m.Talking && _t.Glow) dot.Effect = new DropShadowEffect { Color = Theme.C(dotColor), BlurRadius = 9, ShadowDepth = 0 };
-        row.Children.Add(dot);
+        var indicator = VoiceIndicator.Create(_cfg.VoiceIndicatorStyle, m.Talking, small, _t.SquareDots, Theme.B(dotColor), SystemParameters.ClientAreaAnimation);
+        if (m.Talking && _t.Glow) indicator.Effect = new DropShadowEffect { Color = Theme.C(dotColor), BlurRadius = 9, ShadowDepth = 0 };
+        row.Children.Add(indicator);
+        if (_cfg.ShowAvatars)
+        {
+            string name = string.IsNullOrWhiteSpace(fav?.Alias) ? m.Nickname : fav!.Alias;
+            row.Children.Add(AvatarStore.Create(name, fav, Theme.B(_t.Text), Theme.B(_t.TalkRow), small));
+        }
         if (!Minimal && _cfg.ShowFlags && m.Country.Length == 2) row.Children.Add(Flag(m.Country, small));
         row.Children.Add(new TextBlock
         {

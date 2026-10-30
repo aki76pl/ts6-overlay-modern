@@ -47,6 +47,7 @@ internal static class DesignCheck
             var roundTrip = System.Text.Json.JsonSerializer.Deserialize<Config>(System.Text.Json.JsonSerializer.Serialize(new Config { UserSpacing = 12 }));
             if (roundTrip?.UserSpacing != 12) throw new InvalidOperationException("Spacing must survive configuration serialization.");
             CheckSpeakerTransitions();
+            CheckNewFeatures(output);
             var cfg = new Config { MinimalMode = true, ShowChannelList = true };
             double verticalWidth = 0, verticalHeight = 0;
             foreach (bool horizontal in new[] { false, true })
@@ -68,7 +69,7 @@ internal static class DesignCheck
             if (restored.Profiles[0].HorizontalLayout != true || restored.FavoriteFor("unique-user")?.Alias != "Pilot" || restored.Profiles[0].Scale != 1.3)
                 throw new InvalidOperationException("Profiles and aliases must survive configuration serialization.");
             settings.Close();
-            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections; spacing; speaker hold/fade/resume/disconnect/identity; minimal layouts; saved profiles and aliases.");
+            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections; spacing; speaker hold/fade/resume/disconnect/identity; minimal layouts; saved profiles and aliases; voice indicator motion/lifecycle; avatar import/fallback; appearance preset roundtrip/privacy; connection diagnostics.");
         }
         catch (Exception ex)
         {
@@ -76,6 +77,58 @@ internal static class DesignCheck
             Environment.ExitCode = 1;
         }
         finally { app.Shutdown(); }
+    }
+
+    static void CheckNewFeatures(string output)
+    {
+        foreach (string style in new[] { "Pulse", "Bars", "Static" })
+        foreach (bool talking in new[] { false, true })
+        foreach (bool motion in new[] { false, true })
+        {
+            var indicator = (System.Windows.Controls.Grid)VoiceIndicator.Create(style, talking, false, false, Brushes.Cyan, motion);
+            indicator.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+            bool animated = indicator.Children.OfType<System.Windows.Shapes.Shape>().Any(shape => shape.HasAnimatedProperties || shape.RenderTransform.HasAnimatedProperties);
+            if (animated != (talking && motion && style != "Static")) throw new InvalidOperationException("Voice indicator animation state is incorrect.");
+            indicator.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            if (indicator.Children.OfType<System.Windows.Shapes.Shape>().Any(shape => shape.HasAnimatedProperties || shape.RenderTransform.HasAnimatedProperties))
+                throw new InvalidOperationException("Voice animations must be removed on unload.");
+        }
+        var source = new System.Windows.Controls.Border { Width = 80, Height = 40, Background = Brushes.Red };
+        source.Measure(new Size(80, 40)); source.Arrange(new Rect(0, 0, 80, 40));
+        string input = Path.Combine(output, "avatar-input.png"); Save(source, input);
+        var favourite = new Favorite { Uid = "test-user", AvatarPng = AvatarStore.Import(input) };
+        var image = AvatarStore.ImageFor(favourite);
+        if (image?.PixelWidth != 64 || image.PixelHeight != 64 || AvatarStore.Initials("Jan Kowalski") != "JK")
+            throw new InvalidOperationException("Avatar size or initials are incorrect.");
+        favourite.AvatarPng = "broken-image";
+        if (AvatarStore.ImageFor(favourite) != null) throw new InvalidOperationException("Broken avatar must fall back to initials.");
+        foreach (string style in new[] { "Pulse", "Bars", "Static" })
+        {
+            var cfg = new Config { VoiceIndicatorStyle = style, ShowAvatars = true };
+            var view = new OverlayView(cfg, preview: true); view.ApplyTheme(Theme.ByName("Aurora")); view.ShowDemo();
+            view.Measure(new Size(900, 1000)); view.Arrange(new Rect(view.DesiredSize)); view.UpdateLayout();
+            Save(view, Path.Combine(output, "voice-" + style + ".png"));
+        }
+        var config = new Config { ApiKey = "do-not-export-token", VoiceIndicatorStyle = "Bars", Scale = 1.4, SpeakerHoldSeconds = 4 };
+        string presetFile = Path.Combine(output, "test.ts6look"); AppearancePreset.Capture(config).Export(presetFile);
+        if (File.ReadAllText(presetFile).Contains("do-not-export-token")) throw new InvalidOperationException("Appearance preset leaked credentials.");
+        var target = new Config { ApiKey = "keep-existing-token" };
+        AppearancePreset.Read(presetFile).Apply(target);
+        if (target.ApiKey != "keep-existing-token" || target.VoiceIndicatorStyle != "Bars" || target.Scale != 1.4 || target.SpeakerHoldSeconds != 4)
+            throw new InvalidOperationException("Appearance preset failed to preserve settings.");
+        File.WriteAllText(presetFile, "{\"FormatVersion\":99}");
+        bool rejected = false; try { AppearancePreset.Read(presetFile); } catch (InvalidDataException) { rejected = true; }
+        if (!rejected) throw new InvalidOperationException("Unknown appearance format must be rejected.");
+        var client = new TsClient(new Config());
+        if (client.Diagnostics().Events != 0 || client.Diagnostics().Authorized) throw new InvalidOperationException("Diagnostics must start disconnected.");
+        var handle = typeof(TsClient).GetMethod("Handle", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        string auth = "{\"type\":\"auth\",\"payload\":{\"connections\":[]}}";
+        handle.Invoke(client, new object?[] { System.Text.Json.Nodes.JsonNode.Parse(auth), auth });
+        string talk = "{\"type\":\"talkStatusChanged\",\"payload\":{\"connectionId\":1,\"clientId\":1,\"status\":1}}";
+        handle.Invoke(client, new object?[] { System.Text.Json.Nodes.JsonNode.Parse(talk), talk });
+        var diagnostic = client.Diagnostics();
+        if (!diagnostic.Authorized || diagnostic.Events != 1 || diagnostic.LastEvent == null || diagnostic.LastTalk == null)
+            throw new InvalidOperationException("Diagnostics failed to track authorization or voice events.");
     }
 
     static void CheckSpeakerTransitions()

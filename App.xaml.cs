@@ -595,6 +595,11 @@ public partial class App : Application
     /// <summary>Bieżąca pozycja i rozmiar nakładki — do zapisania w profilu gry.</summary>
     public (double left, double top) OverlayPosition => (_win.Left, _win.Top);
 
+    public void ReopenAppearanceSettings()
+    {
+        _settings?.Close(); _settings = null; OpenSettings(SettingsWindow.TabLook);
+    }
+
     void OpenSettings(int tab = 0)
     {
         if (_settings == null)

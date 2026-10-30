@@ -1,3 +1,10 @@
+## Nowości 3.7.2
+
+- **Wygląd → Wskaźnik aktywności głosu**: pulsujący punkt, animowane słupki lub punkt statyczny.
+- **Wygląd → Zawartość**: włączanie awatarów. Zdjęcie przypiszesz w **Osoby → Ulubieni → Awatar…**; przycisk **Inicjały** przywraca inicjały.
+- **Wygląd → Pakiet wyglądu**: eksport i import ustawień głównych jako `.ts6look`.
+- **Zachowanie → Diagnostyka → Sprawdź połączenie**: aktualizowany raport TeamSpeak, API, autoryzacji i zdarzeń.
+
 ## Nowości 3.7.0
 
 Wygaszanie nicków, tryb minimalistyczny i edytor układu: **Ustawienia → Wygląd**. Profile: **Zachowanie → Profile gier**. Pseudonimy i kolory: **Osoby → Ulubieni**. Pobieranie aktualizacji: **Aktualizacje i kopia → Sprawdź teraz**.

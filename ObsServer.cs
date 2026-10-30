@@ -53,6 +53,8 @@ public sealed class ObsServer : IDisposable
         object Member(ClientInfo m, int myId) => new
         {
             nick = string.IsNullOrWhiteSpace(cfg.FavoriteFor(m.Uid)?.Alias) ? m.Nickname : cfg.FavoriteFor(m.Uid)!.Alias,
+            avatar = cfg.ShowAvatars && AvatarStore.ImageFor(cfg.FavoriteFor(m.Uid)) != null ? cfg.FavoriteFor(m.Uid)!.AvatarPng : null,
+            initials = AvatarStore.Initials(string.IsNullOrWhiteSpace(cfg.FavoriteFor(m.Uid)?.Alias) ? m.Nickname : cfg.FavoriteFor(m.Uid)!.Alias),
             id = m.Id, uid = m.Uid, channelId = m.ChannelId,
             talking = m.Talking,
             whisper = m.Whisper,
@@ -93,6 +95,8 @@ public sealed class ObsServer : IDisposable
             square = t.SquareDots,
             shadow = t.TextShadow,
             glow = t.Glow,
+            voiceIndicator = cfg.VoiceIndicatorStyle,
+            showAvatars = cfg.ShowAvatars,
         });
     }
 
@@ -163,6 +167,17 @@ public sealed class ObsServer : IDisposable
   .ic{font-size:11px}
   .n{border-radius:5px;padding:4px 8px;margin:4px 0 0;font-size:13px;transition:opacity .6s}
   .gone{opacity:0}
+  .avatar{width:20px;height:20px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;background:#253448;color:white;font-size:10px;font-weight:600}
+  .voice{display:inline-flex;align-items:center;justify-content:center;width:14px;height:16px;flex-shrink:0}
+  .pulse{animation:voice-pulse 600ms ease-in-out infinite alternate}
+  .voice-bars{display:inline-flex;align-items:center;gap:1px;width:11px;height:16px}
+  .voice-bars i{display:block;width:3px;height:3px;background:currentColor}
+  .voice-bars.active i{height:14px;animation:voice-bars 240ms ease-in-out infinite alternate}
+  .voice-bars.active i:nth-child(2){animation-duration:315ms}
+  .voice-bars.active i:nth-child(3){animation-duration:390ms}
+  @keyframes voice-pulse{from{opacity:.4}to{opacity:1}}
+  @keyframes voice-bars{from{transform:scaleY(.25)}to{transform:scaleY(1)}}
+  @media(prefers-reduced-motion:reduce){.pulse,.voice-bars.active i{animation:none}}
 </style></head>
 <body><div id="root"></div>
 <script>
@@ -202,9 +217,15 @@ async function tick() {
     const row = (m, small, alpha) => {
         const dc = m.talking ? (m.whisper ? t.Whisper : t.Talk) : t.Idle;
         const glow = m.talking && s.glow ? 'box-shadow:0 0 8px ' + dc + ';' : '';
+        const pulse = m.talking && (s.voiceIndicator || 'Pulse') === 'Pulse';
+        const phase = (duration) => '-' + (now % (duration * 2)) + 'ms';
+        const indicator = s.voiceIndicator === 'Bars'
+          ? '<span class="voice"><span class="voice-bars' + (m.talking ? ' active' : '') + '" style="color:' + dc + '">' + [240,315,390].map(d => '<i style="animation-delay:' + phase(d) + '"></i>').join('') + '</span></span>'
+          : '<span class="voice"><span class="dot' + (pulse ? ' pulse' : '') + '" style="background:' + dc + ';' + glow + ';animation-delay:' + phase(600) + '"></span></span>';
         const nc = m.color || (m.talking ? t.TextTalking : t.Text);
         return '<div class="row" style="opacity:' + alpha + ';background:' + (!minimal && m.talking ? t.TalkRow : 'transparent') + (small ? ';font-size:12px' : '') + '">'
-          + '<span class="dot" style="background:' + dc + ';' + glow + '"></span>'
+          + indicator
+          + (s.showAvatars ? (m.avatar && /^[A-Za-z0-9+/=]+$/.test(m.avatar) ? '<img class="avatar" src="data:image/png;base64,' + m.avatar + '">' : '<span class="avatar">' + esc(m.initials || '?') + '</span>') : '')
           + (!minimal && m.country ? '<img src="https://flagcdn.com/20x15/' + m.country + '.png" width="18" height="13" style="margin-right:2px">' : '')
           + '<span style="color:' + nc + ';font-weight:' + (m.talking ? 700 : 400) + ';' + shadow + '">' + (!minimal && m.color ? '★ ' : '') + esc(m.nick) + (m.me && !minimal ? s.texts.me : '') + '</span>'
           + (m.recording ? '<span class="ic" style="color:#f33">⏺</span>' : '')
