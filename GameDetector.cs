@@ -33,12 +33,14 @@ public static class GameDetector
     {
         string name = ForegroundProcess();
         if (name == "") return false;
-        if (name.Equals("TeamSpeak", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6Overlay", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6OverlayModern", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("TeamSpeak", StringComparison.OrdinalIgnoreCase) || name.Equals("TS6Overlay", StringComparison.OrdinalIgnoreCase) || IsOverlayProcess(name))
             return null;
         if (cfg.Games.Concat(cfg.Profiles.Select(p => p.Game)).Any(g => Normalize(g).Equals(name, StringComparison.OrdinalIgnoreCase))) return true;
         if (cfg.GameFullscreenAny && !NeverGame.Contains(name) && IsForegroundFullscreen()) return true;
         return false;
     }
+
+    static bool IsOverlayProcess(string name) => name.Equals("TS6OverlayModern", StringComparison.OrdinalIgnoreCase) || name.StartsWith("TS6OverlayModern-", StringComparison.OrdinalIgnoreCase);
 
     public static string Normalize(string exe)
     {
@@ -54,7 +56,7 @@ public static class GameDetector
         {
             try
             {
-                if (p.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(p.MainWindowTitle) && !NeverGame.Contains(p.ProcessName))
+                if (p.MainWindowHandle != IntPtr.Zero && !string.IsNullOrEmpty(p.MainWindowTitle) && !NeverGame.Contains(p.ProcessName) && !IsOverlayProcess(p.ProcessName))
                     list.Add(p.ProcessName);
             }
             catch { }

@@ -27,7 +27,7 @@ Nie uruchamiaj obu aplikacji jednocześnie: używają tych samych globalnych skr
 
 ## Windows x64
 
-Uruchom `TS6OverlayModern.exe`. Wydanie self-contained zawiera .NET.
+Uruchom pobrany plik `TS6OverlayModern-<wersja>.exe` (np. `TS6OverlayModern-3.7.1.exe`). Wydanie self-contained zawiera .NET.
 TeamSpeak musi udzielić nowej aplikacji dostępu do API.
 
 ## Kompilacja

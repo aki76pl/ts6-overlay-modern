@@ -36,13 +36,13 @@ public static class Updater
         long size = 0;
         string? digest = null;
         if (json?["assets"] is JsonArray assets)
-            foreach (var a in assets)
-                if (string.Equals(a?["name"]?.GetValue<string>(), AssetName, StringComparison.OrdinalIgnoreCase))
-                {
-                    url = a?["browser_download_url"]?.GetValue<string>();
-                    size = a?["size"]?.GetValue<long>() ?? 0;
-                    digest = a?["digest"]?.GetValue<string>();
-                }
+        {
+            var asset = assets.FirstOrDefault(a => string.Equals(a?["name"]?.GetValue<string>(), $"TS6OverlayModern-{v}.exe", StringComparison.OrdinalIgnoreCase))
+                ?? assets.FirstOrDefault(a => string.Equals(a?["name"]?.GetValue<string>(), AssetName, StringComparison.OrdinalIgnoreCase));
+            url = asset?["browser_download_url"]?.GetValue<string>();
+            size = asset?["size"]?.GetValue<long>() ?? 0;
+            digest = asset?["digest"]?.GetValue<string>();
+        }
         if (url == null || v <= Current) return null;
         return new Release(v, tag, json?["body"]?.GetValue<string>() ?? "", url, size, digest);
     }
