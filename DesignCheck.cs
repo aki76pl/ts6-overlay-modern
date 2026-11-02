@@ -49,6 +49,7 @@ internal static class DesignCheck
             CheckSpeakerTransitions();
             CheckNewFeatures(output);
             UpdateHandoverChecks.Run(output);
+            NotificationSoundChecks.Run(output);
             var cfg = new Config { MinimalMode = true, ShowChannelList = true };
             double verticalWidth = 0, verticalHeight = 0;
             foreach (bool horizontal in new[] { false, true })
@@ -70,7 +71,7 @@ internal static class DesignCheck
             if (restored.Profiles[0].HorizontalLayout != true || restored.FavoriteFor("unique-user")?.Alias != "Pilot" || restored.Profiles[0].Scale != 1.3)
                 throw new InvalidOperationException("Profiles and aliases must survive configuration serialization.");
             settings.Close();
-            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections; spacing; speaker hold/fade/resume/disconnect/identity; minimal layouts; saved profiles and aliases; voice indicator motion/lifecycle; avatar import/fallback; appearance preset roundtrip/privacy; connection diagnostics; updater locked legacy backup, target lock, transient lock, launch rollback, parent exit and settings preservation.");
+            File.WriteAllText(Path.Combine(output, "result.txt"), "PASS: 10 settings sections; spacing; speaker hold/fade/resume/disconnect/identity; minimal layouts; saved profiles and aliases; voice indicator motion/lifecycle; avatar import/fallback; appearance preset roundtrip/privacy; connection diagnostics; updater locked legacy backup, target lock, transient lock, launch rollback, parent exit and settings preservation; notification PCM audio, output selection, error reporting, join/move/disconnect events and saved sound preferences.");
         }
         catch (Exception ex)
         {

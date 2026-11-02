@@ -1,3 +1,7 @@
+## Poprawka 3.7.4 — dźwięki powiadomień
+
+W **Powiadomienia → Dźwięki** kliknij **Włącz dźwięki wejścia i wyjścia**, wybierz słuchawki/głośniki i sprawdź **Test wejścia** oraz **Test wyjścia**. Wynik lub błąd zobaczysz pod przyciskami. Zachowano zapisane ustawienia użytkownika; dźwięk wyjścia jest domyślnie włączony dla nowych konfiguracji.
+
 ## Poprawka 3.7.3 — aktualizacje Windows
 
 Aktualizator czeka na zakończenie procesu, dopiero potem podmienia EXE. Naprawia to błąd dostępu do `TS6Overlay.old`. Przy chwilowej blokadzie pliku ponawia próbę, a po błędzie uruchomienia przywraca poprzednią wersję.

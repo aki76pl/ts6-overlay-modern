@@ -87,13 +87,14 @@ public sealed class Config
     /// <summary>Dźwięk, gdy ktoś wchodzi na Twój kanał.</summary>
     public bool SoundOnJoin { get; set; } = true;
     /// <summary>Dźwięk, gdy ktoś opuszcza Twój kanał.</summary>
-    public bool SoundOnLeave { get; set; } = false;
+    public bool SoundOnLeave { get; set; } = true;
     public bool SoundOnMessage { get; set; } = true;
     public bool SoundOnPoke { get; set; } = true;
     /// <summary>Własne dźwięki przypisane do zdarzeń: nazwa SoundKind → plik w %APPDATA%\TS6Overlay\sounds.</summary>
     public Dictionary<string, string> SoundFiles { get; set; } = new();
     /// <summary>Głośność sygnałów 0–100.</summary>
     public int Volume { get; set; } = 60;
+    public string NotificationOutputDeviceName { get; set; } = "";
 
     // --- wiadomości ---
     public bool ShowPrivateMessages { get; set; } = true;

@@ -105,6 +105,7 @@ public partial class App : Application
         L.Set(Cfg.Language);
         Theme.LoadCustom();
         Sounds.Volume = Cfg.Volume;
+        Sounds.OutputDeviceName = Cfg.NotificationOutputDeviceName;
         Sounds.Files = new(Cfg.SoundFiles);
 
         if (args.Contains("--updated")) Installer.RefreshVersion();
@@ -123,6 +124,7 @@ public partial class App : Application
         Ts.StateChanged += () => Dispatcher.BeginInvoke(Refresh);
         Ts.Notice += n => Dispatcher.BeginInvoke(() => OnNotice(n));
         Ts.TalkChanged += (c, t) => Dispatcher.BeginInvoke(() => Stats.OnTalk(c, t));
+        Sounds.PlaybackError += message => Dispatcher.BeginInvoke(() => SetStatus(message));
         Ts.Status += s => Dispatcher.BeginInvoke(() => SetStatus(s));
         if (!args.Contains("--design-check")) _ = Task.Run(() => Ts.RunAsync(_stop.Token));
 
@@ -327,6 +329,8 @@ public partial class App : Application
 
     void OnNotice(Notice n)
     {
+        // Audio must not depend on successful overlay rendering or chat archiving.
+        if (NotificationSoundRouter.For(Cfg, n) is { } sound) Sounds.Play(sound.Kind, sound.Path);
         _win.View.AddNotice(n);
         Obs.AddNotice(n);
         Obs.Update(_state, _win.View.Theme, Cfg, ActiveProfile);
@@ -334,20 +338,6 @@ public partial class App : Application
         if (n.Kind is NoticeKind.Message or NoticeKind.Poke && Links.Find(n.Text) is { Count: > 0 } found) LastLink = found[^1];
         if (Cfg.KeepChatArchive) ChatArchive.Append(n, _state.Active?.Server ?? "");
         if (Phone.Running) _phoneJson = PhoneJson();
-
-        var fav = n.Who != null ? Cfg.FavoriteFor(n.Who.Uid) : null;
-        switch (n.Kind)
-        {
-            case NoticeKind.Join when Cfg.SoundOnJoin:
-                if (fav != null) Sounds.Play(SoundKind.Favorite, fav.SoundPath);
-                else Sounds.Play(SoundKind.Join);
-                break;
-            case NoticeKind.Friend when Cfg.SoundOnJoin && fav != null: Sounds.Play(SoundKind.Favorite, fav.SoundPath); break;
-            case NoticeKind.Leave when Cfg.SoundOnLeave: Sounds.Play(SoundKind.Leave); break;
-            case NoticeKind.Message when Cfg.SoundOnMessage: Sounds.Play(SoundKind.Message); break;
-            case NoticeKind.Poke when Cfg.SoundOnPoke: Sounds.Play(SoundKind.Poke); break;
-            case NoticeKind.Recording when Cfg.SoundOnRecording: Sounds.Play(SoundKind.Recording); break;
-        }
 
         var flash = Cfg.RgbColorFor(n.Kind.ToString());
         if (flash != "") Lights.Flash(flash);
@@ -540,6 +530,7 @@ public partial class App : Application
     {
         Cfg.Save();
         Sounds.Volume = Cfg.Volume;
+        Sounds.OutputDeviceName = Cfg.NotificationOutputDeviceName;
         Sounds.Files = new(Cfg.SoundFiles);
         Links.BrowserPath = Cfg.LinkBrowser;
         if (!BindCapture) Binds.Register();
@@ -606,6 +597,11 @@ public partial class App : Application
 
     /// <summary>Bieżąca pozycja i rozmiar nakładki — do zapisania w profilu gry.</summary>
     public (double left, double top) OverlayPosition => (_win.Left, _win.Top);
+
+    public void ReopenNotificationSettings()
+    {
+        _settings?.Close(); _settings = null; OpenSettings(SettingsWindow.TabNotify);
+    }
 
     public void ReopenAppearanceSettings()
     {
@@ -727,6 +723,7 @@ public partial class App : Application
 
     void SetStatus(string s)
     {
+        if (_tray == null) return;
         var t = "TS6 Overlay — " + s;
         _tray.Text = t.Length > 63 ? t[..63] : t;
     }
@@ -835,6 +832,7 @@ public partial class App : Application
     {
         _stop.Cancel();
         Mic.Dispose();
+        Sounds.Dispose();
         Obs.Dispose();
         Binds?.Dispose();
         Voice?.Dispose();

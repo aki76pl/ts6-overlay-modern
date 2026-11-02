@@ -563,6 +563,24 @@ public sealed partial class SettingsWindow : Window
         p.Children.Add(Check("Szturchnięcia (poke)", () => _cfg.ShowPokes, v => _cfg.ShowPokes = v));
 
         p.Children.Add(Header("Dźwięki"));
+        var soundDevice = new ComboBox { MinWidth = 300 };
+        void LoadSoundDevices()
+        {
+            soundDevice.Items.Clear(); soundDevice.Items.Add(T("Domyślne urządzenie Windows"));
+            foreach (var device in Sounds.Devices()) soundDevice.Items.Add(device.Name);
+            soundDevice.SelectedItem = _cfg.NotificationOutputDeviceName == "" ? soundDevice.Items[0] : _cfg.NotificationOutputDeviceName;
+            if (soundDevice.SelectedIndex < 0) soundDevice.SelectedIndex = 0;
+        }
+        LoadSoundDevices();
+        bool loadingSoundDevices = false;
+        soundDevice.SelectionChanged += (_, _) => { if (!loadingSoundDevices && soundDevice.SelectedIndex >= 0) { _cfg.NotificationOutputDeviceName = soundDevice.SelectedIndex == 0 ? "" : (string)soundDevice.SelectedItem; Changed(); } };
+        p.Children.Add(Row(Label("Wyjście powiadomień"), soundDevice, Btn("Odśwież urządzenia", () => { loadingSoundDevices = true; LoadSoundDevices(); loadingSoundDevices = false; })));
+        p.Children.Add(Row(Btn("Włącz dźwięki wejścia i wyjścia", () =>
+        {
+            _cfg.SoundOnJoin = _cfg.SoundOnLeave = true; if (_cfg.Volume == 0) _cfg.Volume = 60;
+            Changed(); Sounds.Play(SoundKind.Join); _app.ReopenNotificationSettings();
+        }, primary: true), Btn("Test wejścia", () => Sounds.Play(SoundKind.Join)), Btn("Test wyjścia", () => Sounds.Play(SoundKind.Leave))));
+        _soundStatus = Hint(Sounds.LastStatus); p.Children.Add(_soundStatus);
         p.Children.Add(SliderRow("Głośność", 0, 100, () => _cfg.Volume, v => _cfg.Volume = (int)v, v => $"{v:0}%"));
         p.Children.Add(Hint(T("Każdemu zdarzeniu możesz przypisać własny dźwięk: kliknij „Wybierz…” albo przeciągnij plik (.wav, .mp3, .wma, .aiff, .m4a) na wiersz. ") +
                             T("Program kopiuje plik do swojego folderu, a odtwarza najwyżej {0} s.", Sounds.MaxSeconds)));
@@ -630,6 +648,8 @@ public sealed partial class SettingsWindow : Window
     }
 
     /// <summary>Wiersz zdarzenia: włącz/wyłącz, test, przypisanie własnego pliku (przycisk lub przeciągnij i upuść).</summary>
+    TextBlock? _soundStatus;
+
     UIElement SoundRow(string label, Func<bool>? get, Action<bool>? set, SoundKind kind)
     {
         UIElement head;
@@ -1566,6 +1586,7 @@ public sealed partial class SettingsWindow : Window
 
     void TimerTick()
     {
+        if (_soundStatus != null) _soundStatus.Text = Sounds.LastStatus;
         if (_wotStatus != null) _wotStatus.Text = _app.Wot.Status;
         if (_phoneStatus != null)
             _phoneStatus.Text = !_cfg.PhoneEnabled ? "" : _app.Phone.Running ? T("Panel działa.") : T("Nie udało się uruchomić: {0} Spróbuj innego portu.", _app.Phone.Error ?? "");

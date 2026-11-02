@@ -1,9 +1,10 @@
-## TS6 Overlay Modern 3.7.3
+## TS6 Overlay Modern 3.7.4
 
-- Naprawiono błąd „Access to the path TS6Overlay.old is denied” podczas aktualizacji.
-- Osobny pomocnik czeka na zakończenie aplikacji, a dopiero potem podmienia EXE. Unikatowe nazwy plików tymczasowych eliminują kolizje ze starym plikiem .old.
-- Dodano ponawianie operacji przy chwilowej blokadzie pliku i przywracanie poprzedniej wersji po błędzie podmiany lub uruchomienia.
-- Pobieranie odbywa się poza katalogiem instalacji. Podmiana działa również dla przenośnej kopii na innym dysku.
-- Ustawienia, motywy, awatary i profile pozostają zachowane.
+- Poprawiono odtwarzanie powiadomień: PCM 16-bit stereo 44,1 kHz zamiast formatu IEEE float dla sterowników waveOut.
+- Dodano wybór wyjścia audio, test wejścia/wyjścia i widoczny wynik odtwarzania w Powiadomienia → Dźwięki. Błędy trafiają również do lokalnego sound-errors.log.
+- Uszkodzony własny plik dźwięku zastępowany jest sygnałem wbudowanym.
+- Poprawiono wykrywanie opuszczenia kanału, gdy zdarzenie Remote Apps nie zawiera oldChannelId; poprzedni kanał odczytywany jest z zapamiętanego stanu.
+- Odtwarzanie powiadomienia jest niezależne od renderowania nakładki i zapisu archiwum czatu.
+- Dźwięk wyjścia jest domyślnie włączony dla nowych ustawień. Zapisane preferencje pozostają zachowane. Przycisk „Włącz dźwięki wejścia i wyjścia” włącza obie opcje i przywraca 60% głośności, jeśli była ustawiona na 0%.
 
-Jeśli starszy aktualizator wyświetla ten błąd, zamknij program z zasobnika, pobierz TS6OverlayModern-3.7.3.exe i uruchom go ręcznie.
+Po aktualizacji: Ustawienia → Powiadomienia → Dźwięki → Włącz dźwięki wejścia i wyjścia. Wybierz właściwe słuchawki/głośniki i użyj przycisków testowych.

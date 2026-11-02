@@ -505,9 +505,10 @@ public sealed class TsClient
     {
         var c = Conn(Int(p["connectionId"]));
         int clientId = Int(p["clientId"]);
-        int oldCh = Int(p["oldChannelId"]);
-        int newCh = Int(p["newChannelId"]);
+        if (clientId == 0 || (p["newChannelId"] == null && p["channelId"] == null)) return;
         var cl = c.Get(clientId);
+        int oldCh = p["oldChannelId"] == null ? cl.ChannelId : Int(p["oldChannelId"]);
+        int newCh = Int(p["newChannelId"] ?? p["channelId"]);
         ApplyClientProps(cl, p["properties"]);
 
         int myCh = c.MyChannelId;

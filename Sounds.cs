@@ -15,7 +15,7 @@ public static class Sounds
 {
     const int Rate = 44100;
     static readonly Dictionary<SoundKind, float[]> Cache = new();
-    static WaveOutEvent? _out;
+    static IWavePlayer? _out;
     static IDisposable? _reader;
     static readonly object Lock = new();
 
@@ -63,57 +63,102 @@ public static class Sounds
         catch { return TimeSpan.Zero; }
     }
 
-    public static void Play(SoundKind kind, string? customPath = null)
+    public sealed record OutputDevice(string Name, int Number);
+    public static string OutputDeviceName { get; set; } = "";
+    public static string LastStatus { get; private set; } = "";
+    public static string LastError { get; private set; } = "";
+    public static event Action<string>? PlaybackError;
+    internal static Func<IWavePlayer> OutputFactory { get; set; } = () => new WaveOutEvent
     {
+        DeviceNumber = ResolveDevice(OutputDeviceName, Devices()),
+    };
+
+    public static List<OutputDevice> Devices()
+    {
+        var result = new List<OutputDevice>();
         try
         {
-            string? file = !string.IsNullOrEmpty(customPath) && File.Exists(customPath) ? customPath : AssignedFile(kind);
-            if (file == null)
-            {
-                string name = kind switch
-                {
-                    SoundKind.Join => "join", SoundKind.Leave => "leave", SoundKind.Message => "message",
-                    SoundKind.Poke => "poke", SoundKind.Favorite => "favorite", SoundKind.Recording => "recording", _ => "mute",
-                };
-                file = new[] { ".wav", ".mp3" }.Select(e => Path.Combine(Config.Dir, name + e)).FirstOrDefault(File.Exists);
-            }
-
-            ISampleProvider src;
-            AudioFileReader? reader = null;
-            if (file != null)
-            {
-                reader = new AudioFileReader(file);
-                src = new OffsetSampleProvider(reader) { Take = TimeSpan.FromSeconds(MaxSeconds) };
-            }
-            else
-            {
-                var data = Generated(kind);
-                src = new RawSamples(data);
-            }
-            var vol = new VolumeSampleProvider(src) { Volume = Math.Clamp(Volume, 0, 100) / 100f };
-
-            lock (Lock)
-            {
-                _out?.Stop();
-                _out?.Dispose();
-                _reader?.Dispose();
-                _reader = reader;
-                _out = new WaveOutEvent();
-                _out.Init(vol);
-                _out.Play();
-            }
+            for (int i = 0; i < WaveOut.DeviceCount; i++) result.Add(new(WaveOut.GetCapabilities(i).ProductName, i));
         }
-        catch { }
+        catch (Exception ex) { ReportError(ex); }
+        return result;
     }
+    internal static int ResolveDevice(string name, IReadOnlyList<OutputDevice> devices) =>
+        string.IsNullOrWhiteSpace(name) ? -1 : devices.FirstOrDefault(d => d.Name == name)?.Number ?? -1;
 
-    /// <summary>Przerywa bieżący dźwięk powiadomienia.</summary>
-    public static void Stop()
+    public static bool Play(SoundKind kind, string? customPath = null)
     {
         lock (Lock)
         {
-            try { _out?.Stop(); } catch { }
+            LastError = "";
+            if (Volume <= 0) { ReleaseOutput(); LastStatus = L.T("Dźwięki są wyciszone — głośność wynosi 0%."); return false; }
+            AudioFileReader? reader = null;
+            try
+            {
+                string? file = !string.IsNullOrEmpty(customPath) && File.Exists(customPath) ? customPath : AssignedFile(kind);
+                if (file == null)
+                {
+                    string name = kind switch
+                    {
+                        SoundKind.Join => "join", SoundKind.Leave => "leave", SoundKind.Message => "message",
+                        SoundKind.Poke => "poke", SoundKind.Favorite => "favorite", SoundKind.Recording => "recording", _ => "mute",
+                    };
+                    file = new[] { ".wav", ".mp3" }.Select(e => Path.Combine(Config.Dir, name + e)).FirstOrDefault(File.Exists);
+                }
+                ISampleProvider source;
+                string warning = "";
+                try
+                {
+                    if (file == null) source = new RawSamples(Generated(kind));
+                    else { reader = new AudioFileReader(file); source = new OffsetSampleProvider(reader) { Take = TimeSpan.FromSeconds(MaxSeconds) }; }
+                }
+                catch (Exception)
+                {
+                    reader?.Dispose(); reader = null;
+                    source = new RawSamples(Generated(kind));
+                    warning = L.T("Nie można odczytać własnego pliku — użyto dźwięku wbudowanego. ");
+                }
+                if (source.WaveFormat.SampleRate != Rate) source = new WdlResamplingSampleProvider(source, Rate);
+                if (source.WaveFormat.Channels == 1) source = new MonoToStereoSampleProvider(source);
+                var volume = new VolumeSampleProvider(source) { Volume = Math.Clamp(Volume, 0, 100) / 100f };
+                ReleaseOutput();
+                _reader = reader; reader = null;
+                _out = OutputFactory();
+                _out.PlaybackStopped += (sender, e) => { if (e.Exception != null && ReferenceEquals(sender, _out)) ReportError(e.Exception); };
+                // Use widely supported PCM16 stereo instead of IEEE-float waveOut playback.
+                _out.Init(new SampleToWaveProvider16(volume));
+                _out.Play();
+                LastStatus = warning + L.T("Odtwarzanie powiadomienia: {0}; głośność {1}%.", kind, Volume);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                reader?.Dispose(); ReleaseOutput(); ReportError(ex); return false;
+            }
         }
     }
+
+    static void ReportError(Exception error)
+    {
+        LastError = error.Message; LastStatus = L.T("Nie udało się odtworzyć dźwięku: {0}", error.Message);
+        try
+        {
+            Directory.CreateDirectory(Config.Dir);
+            File.AppendAllText(Path.Combine(Config.Dir, "sound-errors.log"), DateTime.Now.ToString("s") + " " + error + Environment.NewLine);
+        }
+        catch { }
+        PlaybackError?.Invoke(LastStatus);
+    }
+    static void ReleaseOutput()
+    {
+        var output = _out; _out = null;
+        try { output?.Stop(); } catch { }
+        try { output?.Dispose(); } catch { }
+        try { _reader?.Dispose(); } catch { }
+        _reader = null;
+    }
+    public static void Stop() { lock (Lock) { try { _out?.Stop(); } catch { } } }
+    public static void Dispose() { lock (Lock) ReleaseOutput(); }
 
     static float[] Generated(SoundKind kind)
     {
