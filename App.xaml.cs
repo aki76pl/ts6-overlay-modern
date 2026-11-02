@@ -62,7 +62,7 @@ public partial class App : Application
             try { UpdateHandover.Run(args[1]); Shutdown(0); }
             catch (Exception ex)
             {
-                MessageBox.Show("Nie udało się dokończyć aktualizacji. Ustawienia pozostają zachowane.\n\n" + ex.Message,
+                MessageBox.Show("Nie udało się dokończyć instalacji lub aktualizacji. Ustawienia pozostają zachowane.\n\n" + ex.Message,
                     "TS6 Overlay — aktualizacja", MessageBoxButton.OK, MessageBoxImage.Error);
                 Shutdown(1);
             }
@@ -108,6 +108,11 @@ public partial class App : Application
         Sounds.OutputDeviceName = Cfg.NotificationOutputDeviceName;
         Sounds.Files = new(Cfg.SoundFiles);
 
+        if (args.Contains("--installed"))
+        {
+            try { Installer.RegisterInstallation(); }
+            catch (Exception ex) { MessageBox.Show("Program został skopiowany, ale nie udało się utworzyć skrótu lub autostartu: " + ex.Message, "TS6 Overlay"); }
+        }
         if (args.Contains("--updated")) Installer.RefreshVersion();
         else if (!handover && !args.Contains("--design-check") && OfferInstall()) { Shutdown(); return; }
 
@@ -190,13 +195,23 @@ public partial class App : Application
 
     void ListenForSecondInstance()
     {
-        var ev = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEvent);
-        var t = new Thread(() =>
+        var show = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEvent);
+        var exit = new EventWaitHandle(false, EventResetMode.AutoReset, UpdateHandover.ExitEvent);
+        var thread = new Thread(() =>
         {
-            while (!_stop.IsCancellationRequested)
-                if (ev.WaitOne(1000)) Dispatcher.BeginInvoke(() => OpenSettings());
+            using (show) using (exit)
+            {
+                var handles = new WaitHandle[] { show, exit, _stop.Token.WaitHandle };
+                while (!_stop.IsCancellationRequested)
+                {
+                    int signal = WaitHandle.WaitAny(handles);
+                    if (signal == 2) return;
+                    if (signal == 1) { Dispatcher.BeginInvoke(() => Quit()); return; }
+                    Dispatcher.BeginInvoke(() => OpenSettings());
+                }
+            }
         }) { IsBackground = true, Name = "second-instance" };
-        t.Start();
+        thread.Start();
         if (Environment.GetCommandLineArgs().Contains("--settings")) Dispatcher.BeginInvoke(() => OpenSettings());
         if (Environment.GetCommandLineArgs().Contains("--stats")) Dispatcher.BeginInvoke(OpenStats);
     }
@@ -220,7 +235,6 @@ public partial class App : Application
         if (r != MessageBoxResult.Yes) return false;
         try
         {
-            _single?.ReleaseMutex();
             Installer.Install();
             return true;
         }
@@ -235,7 +249,8 @@ public partial class App : Application
     {
         try
         {
-            Quit(beforeShutdown: () => { _single?.ReleaseMutex(); Installer.Install(); });
+            Installer.Install();
+            Quit(beforeShutdown: () => _single?.ReleaseMutex());
         }
         catch (Exception ex) { MessageBox.Show(T("Instalacja nie powiodła się: {0}", ex.Message), "TS6 Overlay"); }
     }

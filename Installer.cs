@@ -42,12 +42,28 @@ public static class Installer
         }
     }
 
-    /// <summary>Instaluje bieżący plik i uruchamia zainstalowaną kopię. Wywołujący zamyka się potem.</summary>
+    /// <summary>Przygotowuje instalację w pomocniku; wywołujący zamyka aplikację dopiero po powodzeniu.</summary>
     public static void Install()
     {
-        Directory.CreateDirectory(InstallDir);
-        File.Copy(Environment.ProcessPath!, InstalledExe, true);
+        string directory = PreparePayload(Environment.ProcessPath!, InstalledExe, UpdateHandover.Root);
+        UpdateHandover.Start(directory, InstalledExe, install: true);
+    }
 
+    internal static string PreparePayload(string source, string target, string stagingRoot)
+    {
+        if (string.Equals(Path.GetFullPath(source), Path.GetFullPath(target), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Uruchomiona kopia jest już zainstalowana w tym miejscu.");
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        string directory = Path.Combine(stagingRoot, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try { File.Copy(source, Path.Combine(directory, "payload.exe")); }
+        catch { try { Directory.Delete(directory, true); } catch { } throw; }
+        return directory;
+    }
+
+    /// <summary>Wywoływane przez nową zainstalowaną kopię po udanej podmianie pliku.</summary>
+    public static void RegisterInstallation()
+    {
         CreateShortcut(StartMenuLink, InstalledExe);
 
         using (var k = Registry.CurrentUser.CreateSubKey(RunKey))
@@ -67,7 +83,6 @@ public static class Installer
             k.SetValue("EstimatedSize", (int)(new FileInfo(InstalledExe).Length / 1024), RegistryValueKind.DWord);
         }
 
-        Process.Start(new ProcessStartInfo(InstalledExe, "--installed") { UseShellExecute = true });
     }
 
     /// <summary>Usuwa skróty, wpisy rejestru i (po zamknięciu programu) folder instalacji. Ustawienia zostają.</summary>

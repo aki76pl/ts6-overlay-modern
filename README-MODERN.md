@@ -1,3 +1,9 @@
+## Poprawka 3.7.5 — instalacja
+
+Instalator przygotowuje kopię przed zamknięciem aplikacji i bezpiecznie podmienia EXE po wyjściu procesu. Obsługuje pierwszą instalację, istniejący plik tylko do odczytu oraz przywracanie poprzedniej wersji. Nieudane przygotowanie nie zamyka działającej aplikacji.
+
+Po wcześniejszym błędzie instalacji zakończ pozostawione procesy **TS6OverlayModern** w Menedżerze zadań, uruchom pobraną wersję **3.7.5** i wybierz **Aktualizacje i kopia → Zainstaluj na tym komputerze**.
+
 ## Poprawka 3.7.4 — dźwięki powiadomień
 
 W **Powiadomienia → Dźwięki** kliknij **Włącz dźwięki wejścia i wyjścia**, wybierz słuchawki/głośniki i sprawdź **Test wejścia** oraz **Test wyjścia**. Wynik lub błąd zobaczysz pod przyciskami. Zachowano zapisane ustawienia użytkownika; dźwięk wyjścia jest domyślnie włączony dla nowych konfiguracji.
